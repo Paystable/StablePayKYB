@@ -1079,9 +1079,13 @@ function DocumentBuilder({ data, value, onChange }) {
   const lastPos = useRef({ x: 0, y: 0 });
   const fileRef = useRef(null);
 
+  const [editCrn, setEditCrn] = useState(value?.crn || data?.co_crn || "");
+  const [editAddr, setEditAddr] = useState(value?.regAddr || data?.co_regAddr || "");
+  const [editTin, setEditTin] = useState(value?.tin || data?.co_tin || "");
+  const [editGst, setEditGst] = useState(value?.gst || data?.co_gst || "");
   const companyName = editCompanyName || data?.co_name || "COMPANY NAME";
-  const crn = data?.co_crn || "";
-  const regAddr = data?.co_regAddr || "";
+  const crn = editCrn;
+  const regAddr = editAddr;
   const formattedDate = docDate ? new Date(docDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
 
   /* ── Signature Canvas ── */
@@ -1162,8 +1166,10 @@ function DocumentBuilder({ data, value, onChange }) {
       date: docDate,
       companyLogo,
       companyName: editCompanyName || companyName,
-      crn,
-      regAddr,
+      crn: editCrn,
+      regAddr: editAddr,
+      tin: editTin,
+      gst: editGst,
       completed: true,
     };
     onChange?.(doc);
@@ -1198,6 +1204,8 @@ function DocumentBuilder({ data, value, onChange }) {
         <div>
           <div class="co-name">${companyName}</div>
           ${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}
+          ${editTin ? `<div class="co-detail">TIN/PAN: ${editTin}</div>` : ""}
+          ${editGst ? `<div class="co-detail">GSTIN: ${editGst}</div>` : ""}
           ${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}
         </div>
         ${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div class="logo-placeholder">Company<br/>Logo</div>`}
@@ -1329,8 +1337,21 @@ function DocumentBuilder({ data, value, onChange }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
                 <input defaultValue={companyName} onBlur={e => setEditCompanyName(e.target.value)} style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1, border: "none", borderBottom: "1px dashed #bbb", background: "transparent", outline: "none", width: "100%", fontFamily: "'Inter', sans-serif" }} placeholder="Company Name" />
-                {crn && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CRN: {crn}</div>}
-                {regAddr && <div style={{ fontSize: 11, color: "#666", marginTop: 2, maxWidth: 360, lineHeight: 1.4 }}>{regAddr}</div>}
+                <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: "#999" }}>CRN:</span>
+                  <input defaultValue={crn} onBlur={e => setEditCrn(e.target.value)} placeholder="Registration number"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", flex: 1 }} />
+                </div>
+                <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: "#999" }}>TIN:</span>
+                  <input defaultValue={editTin} onBlur={e => setEditTin(e.target.value)} placeholder="Tax ID / PAN"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", width: 140 }} />
+                  <span style={{ fontSize: 10, color: "#999", marginLeft: 8 }}>GST:</span>
+                  <input defaultValue={editGst} onBlur={e => setEditGst(e.target.value)} placeholder="GST number"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", width: 160 }} />
+                </div>
+                <input defaultValue={regAddr} onBlur={e => setEditAddr(e.target.value)} placeholder="Registered address"
+                  style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'Inter', sans-serif", padding: "1px 4px", outline: "none", width: "100%", marginTop: 4 }} />
               </div>
               <div onClick={() => logoInputRef.current?.click()} style={{
                 width: 72, height: 72, border: "1.5px dashed #ccc", borderRadius: 8,
@@ -1520,9 +1541,13 @@ function CorporateStructureChart({ data, value, onChange }) {
   const [chartDate, setChartDate] = useState(value?.date || new Date().toISOString().split("T")[0]);
   const logoRef = useRef(null);
   const nextId = useRef(4);
+  const [editCrn, setEditCrn] = useState(value?.crn || data?.co_crn || "");
+  const [editAddr, setEditAddr] = useState(value?.regAddr || data?.co_regAddr || "");
+  const [editTin, setEditTin] = useState(value?.tin || data?.co_tin || "");
+  const [editGst, setEditGst] = useState(value?.gst || data?.co_gst || "");
   const companyName = editCompanyName || data?.co_name || "COMPANY NAME";
-  const crn = data?.co_crn || "";
-  const regAddr = data?.co_regAddr || "";
+  const crn = editCrn;
+  const regAddr = editAddr;
   const formattedDate = chartDate ? new Date(chartDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
 
   const addEntity = (parentId) => {
@@ -1544,7 +1569,7 @@ function CorporateStructureChart({ data, value, onChange }) {
   };
 
   const saveChart = () => {
-    onChange?.({ type: "structure_chart", entities, companyName, companyLogo, crn, regAddr, date: chartDate, completed: true });
+    onChange?.({ type: "structure_chart", entities, companyName, companyLogo, crn: editCrn, regAddr: editAddr, tin: editTin, gst: editGst, date: chartDate, completed: true });
     setMode("completed");
   };
 
@@ -1624,7 +1649,7 @@ function CorporateStructureChart({ data, value, onChange }) {
       </div>`;
     };
     const root = entities.find(e => e.parent === null);
-    return `<!DOCTYPE html><html><head><title>Corporate Structure - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:48px 56px;color:#1a1a1a;max-width:900px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}.co-name{font-size:18px;font-weight:700;letter-spacing:1px}.co-detail{font-size:11px;color:#555;margin-top:2px;line-height:1.5}hr{border:none;border-top:1.5px solid #ccc;margin:16px 0}h1{text-align:center;font-size:15px;letter-spacing:3px;margin:20px 0 4px;text-transform:uppercase}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:24px}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="header"><div><div class="co-name">${companyName}</div>${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}</div>${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div style="width:80px;height:80px;border:1.5px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center">Company<br/>Logo</div>`}</div><hr/><h1>Corporate Ownership Structure</h1><p class="sub">Date: ${formattedDate}</p>${root ? renderHTMLNode(root) : ''}</body></html>`;
+    return `<!DOCTYPE html><html><head><title>Corporate Structure - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:48px 56px;color:#1a1a1a;max-width:900px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}.co-name{font-size:18px;font-weight:700;letter-spacing:1px}.co-detail{font-size:11px;color:#555;margin-top:2px;line-height:1.5}hr{border:none;border-top:1.5px solid #ccc;margin:16px 0}h1{text-align:center;font-size:15px;letter-spacing:3px;margin:20px 0 4px;text-transform:uppercase}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:24px}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="header"><div><div class="co-name">${companyName}</div>${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}${editTin ? `<div class="co-detail">TIN/PAN: ${editTin}</div>` : ""}${editGst ? `<div class="co-detail">GSTIN: ${editGst}</div>` : ""}${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}</div>${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div style="width:80px;height:80px;border:1.5px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center">Company<br/>Logo</div>`}</div><hr/><h1>Corporate Ownership Structure</h1><p class="sub">Date: ${formattedDate}</p>${root ? renderHTMLNode(root) : ''}</body></html>`;
   };
 
   const downloadPDF = () => {
@@ -1674,8 +1699,21 @@ function CorporateStructureChart({ data, value, onChange }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
                 <input defaultValue={companyName} onBlur={e => setEditCompanyName(e.target.value)} style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1, border: "none", borderBottom: "1px dashed #bbb", background: "transparent", outline: "none", width: "100%", fontFamily: "'Inter', sans-serif" }} placeholder="Company Name" />
-                {crn && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CRN: {crn}</div>}
-                {regAddr && <div style={{ fontSize: 11, color: "#666", marginTop: 2, maxWidth: 360, lineHeight: 1.4 }}>{regAddr}</div>}
+                <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: "#999" }}>CRN:</span>
+                  <input defaultValue={crn} onBlur={e => setEditCrn(e.target.value)} placeholder="Registration number"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", flex: 1 }} />
+                </div>
+                <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: "#999" }}>TIN:</span>
+                  <input defaultValue={editTin} onBlur={e => setEditTin(e.target.value)} placeholder="Tax ID / PAN"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", width: 140 }} />
+                  <span style={{ fontSize: 10, color: "#999", marginLeft: 8 }}>GST:</span>
+                  <input defaultValue={editGst} onBlur={e => setEditGst(e.target.value)} placeholder="GST number"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", width: 160 }} />
+                </div>
+                <input defaultValue={regAddr} onBlur={e => setEditAddr(e.target.value)} placeholder="Registered address"
+                  style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'Inter', sans-serif", padding: "1px 4px", outline: "none", width: "100%", marginTop: 4 }} />
               </div>
               <div onClick={() => logoRef.current?.click()} style={{ width: 72, height: 72, border: "1.5px dashed #ccc", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#aaa", fontSize: 9, textAlign: "center", lineHeight: 1.3, cursor: "pointer", overflow: "hidden" }}>
                 {companyLogo ? <img src={companyLogo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <>Click to<br/>add logo</>}
@@ -1718,16 +1756,20 @@ function ShareholderRegister({ data, value, onChange }) {
   const [companyLogo, setCompanyLogo] = useState(value?.companyLogo || null);
   const logoRef = useRef(null);
 
+  const [editCrn, setEditCrn] = useState(value?.crn || data?.co_crn || "");
+  const [editAddr, setEditAddr] = useState(value?.regAddr || data?.co_regAddr || "");
+  const [editTin, setEditTin] = useState(value?.tin || data?.co_tin || "");
+  const [editGst, setEditGst] = useState(value?.gst || data?.co_gst || "");
   const companyName = editCompanyName || data?.co_name || "COMPANY NAME";
-  const crn = data?.co_crn || "";
-  const regAddr = data?.co_regAddr || "";
+  const crn = editCrn;
+  const regAddr = editAddr;
 
   const addRow = () => setShareholders([...shareholders, { name: "", shares: "", pct: "", classType: "Ordinary", dateAcq: "", address: "" }]);
   const removeRow = () => { if (shareholders.length > 1) setShareholders(shareholders.slice(0, -1)); };
   const updateRow = (i, field, val) => setShareholders(shareholders.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
 
   const saveRegister = () => {
-    onChange?.({ type: "shareholder_register", shareholders: shareholders.filter(s => s.name.trim()), registerDate, companyName, companyLogo, crn, regAddr, completed: true });
+    onChange?.({ type: "shareholder_register", shareholders: shareholders.filter(s => s.name.trim()), registerDate, companyName, companyLogo, crn: editCrn, regAddr: editAddr, tin: editTin, gst: editGst, completed: true });
     setMode("completed");
   };
 
@@ -1736,7 +1778,7 @@ function ShareholderRegister({ data, value, onChange }) {
       `<tr><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;">${s.name}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.shares}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.pct}%</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.classType}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;">${s.dateAcq}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:11px;">${s.address}</td></tr>`
     ).join("");
     const formattedDate = registerDate ? new Date(registerDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
-    return `<!DOCTYPE html><html><head><title>Shareholder Register - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:48px 56px;color:#1a1a1a;line-height:1.6;font-size:13px;max-width:900px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}.co-name{font-size:18px;font-weight:700;letter-spacing:1px}.co-detail{font-size:11px;color:#555;margin-top:2px;line-height:1.5}hr{border:none;border-top:1.5px solid #ccc;margin:16px 0}h1{font-size:15px;letter-spacing:3px;text-transform:uppercase;text-align:center;margin:20px 0 4px}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin:16px 0}th{background:#f5f5f5;padding:8px 10px;border:1px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="header"><div><div class="co-name">${companyName}</div>${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}</div>${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div style="width:80px;height:80px;border:1.5px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center">Company<br/>Logo</div>`}</div><hr/><h1>Register of Members</h1><p class="sub">As at ${formattedDate}</p><table><thead><tr><th>Name of Shareholder</th><th style="text-align:center">No. of Shares</th><th style="text-align:center">% Holding</th><th style="text-align:center">Class</th><th>Date Acquired</th><th>Address</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#555;">I certify that the above is a true and complete extract from the Register of Members of ${companyName} as at the date stated above.</p><div style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px"><div><div style="border-bottom:1px solid #1a1a1a;width:200px;margin-bottom:4px;height:40px"></div><div>Company Secretary / Director</div></div><div><div>Date: ${formattedDate}</div></div></div></body></html>`;
+    return `<!DOCTYPE html><html><head><title>Shareholder Register - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:48px 56px;color:#1a1a1a;line-height:1.6;font-size:13px;max-width:900px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}.co-name{font-size:18px;font-weight:700;letter-spacing:1px}.co-detail{font-size:11px;color:#555;margin-top:2px;line-height:1.5}hr{border:none;border-top:1.5px solid #ccc;margin:16px 0}h1{font-size:15px;letter-spacing:3px;text-transform:uppercase;text-align:center;margin:20px 0 4px}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin:16px 0}th{background:#f5f5f5;padding:8px 10px;border:1px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="header"><div><div class="co-name">${companyName}</div>${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}${editTin ? `<div class="co-detail">TIN/PAN: ${editTin}</div>` : ""}${editGst ? `<div class="co-detail">GSTIN: ${editGst}</div>` : ""}${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}</div>${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div style="width:80px;height:80px;border:1.5px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center">Company<br/>Logo</div>`}</div><hr/><h1>Register of Members</h1><p class="sub">As at ${formattedDate}</p><table><thead><tr><th>Name of Shareholder</th><th style="text-align:center">No. of Shares</th><th style="text-align:center">% Holding</th><th style="text-align:center">Class</th><th>Date Acquired</th><th>Address</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#555;">I certify that the above is a true and complete extract from the Register of Members of ${companyName} as at the date stated above.</p><div style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px"><div><div style="border-bottom:1px solid #1a1a1a;width:200px;margin-bottom:4px;height:40px"></div><div>Company Secretary / Director</div></div><div><div>Date: ${formattedDate}</div></div></div></body></html>`;
   };
 
   const downloadPDF = () => {
@@ -1791,8 +1833,21 @@ function ShareholderRegister({ data, value, onChange }) {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
                 <input defaultValue={companyName} onBlur={e => setEditCompanyName(e.target.value)} style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1, border: "none", borderBottom: "1px dashed #bbb", background: "transparent", outline: "none", width: "100%", fontFamily: "'Inter', sans-serif" }} placeholder="Company Name" />
-                {crn && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CRN: {crn}</div>}
-                {regAddr && <div style={{ fontSize: 11, color: "#666", marginTop: 2, maxWidth: 360, lineHeight: 1.4 }}>{regAddr}</div>}
+                <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: "#999" }}>CRN:</span>
+                  <input defaultValue={crn} onBlur={e => setEditCrn(e.target.value)} placeholder="Registration number"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", flex: 1 }} />
+                </div>
+                <div style={{ display: "flex", gap: 4, marginTop: 2, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: "#999" }}>TIN:</span>
+                  <input defaultValue={editTin} onBlur={e => setEditTin(e.target.value)} placeholder="Tax ID / PAN"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", width: 140 }} />
+                  <span style={{ fontSize: 10, color: "#999", marginLeft: 8 }}>GST:</span>
+                  <input defaultValue={editGst} onBlur={e => setEditGst(e.target.value)} placeholder="GST number"
+                    style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "1px 4px", outline: "none", width: 160 }} />
+                </div>
+                <input defaultValue={regAddr} onBlur={e => setEditAddr(e.target.value)} placeholder="Registered address"
+                  style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#444", fontSize: 11, fontFamily: "'Inter', sans-serif", padding: "1px 4px", outline: "none", width: "100%", marginTop: 4 }} />
               </div>
               <div onClick={() => logoRef.current?.click()} style={{ width: 72, height: 72, border: "1.5px dashed #ccc", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#aaa", fontSize: 9, textAlign: "center", lineHeight: 1.3, cursor: "pointer", overflow: "hidden" }}>
                 {companyLogo ? <img src={companyLogo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <>Click to<br/>add logo</>}
@@ -1862,7 +1917,7 @@ const COUNTRIES = ["India","United States","United Kingdom","Singapore","United 
 const LEGAL_FORMS = ["Private Limited Company (Pvt. Ltd.)","Public Limited Company (Ltd.)","Limited Liability Company (LLC)","Limited Liability Partnership (LLP)","Sole Proprietorship","Partnership Firm","Foreign Company Branch","Society / Trust","Other"];
 const TOKENS = ["USDT (TRC-20)","USDT (ERC-20)","USDC (ERC-20)","USDC (Solana)","BUSD","Multiple Stablecoins","BTC","ETH"];
 
-function renderStep(step, data, set) {
+function renderStep(step, data, set, boCount, setBoCount) {
   const v = k => data[k];
   const G = ({ children, cols = 2 }) => (
     <div className="sp-grid" style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "20px 20px" }}>
@@ -2090,7 +2145,24 @@ function renderStep(step, data, set) {
         <InfoBox type="warn">
           <strong>PMLA Disclosure Threshold:</strong> Indian regulation (Prevention of Money Laundering Act, 2002 read with RBI KYC Master Directions 2016) requires disclosure of all natural persons holding ≥10% beneficial interest in the entity. For entities with complex structures, trace to the ultimate beneficial owner. Failure to disclose accurate BO information is an offence under PMLA.
         </InfoBox>
-        {[0, 1, 2].map(i => UBOBlock(i, i === 0))}
+        {Array.from({ length: boCount }, (_, i) => UBOBlock(i, i === 0))}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          <button onClick={() => setBoCount(c => c + 1)} style={{
+            padding: "8px 16px", border: `1px dashed ${T.bdrA}`, borderRadius: 8,
+            background: "transparent", color: T.txt2, fontSize: 12, cursor: "pointer",
+            fontFamily: "'Inter', sans-serif", display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 2V10M2 6H10" stroke={T.blueL} strokeWidth="1.5" strokeLinecap="round"/></svg>
+            Add Beneficial Owner
+          </button>
+          {boCount > 1 && (
+            <button onClick={() => setBoCount(c => Math.max(1, c - 1))} style={{
+              padding: "8px 16px", border: `1px dashed ${T.bdrA}`, borderRadius: 8,
+              background: "transparent", color: T.txt3, fontSize: 12, cursor: "pointer",
+              fontFamily: "'Inter', sans-serif",
+            }}>Remove last</button>
+          )}
+        </div>
         <Divider label="Authorised Signatories" />
         <Field label="Authorised Signatory Name(s) & Positions" required hint="Persons legally authorised to execute contracts and agreements on behalf of the entity">
           <Textarea value={v("bo_signatories")} onChange={val => set("bo_signatories", val)} placeholder="Full name — Position — Email address (one per line)" rows={3} />
@@ -2376,6 +2448,7 @@ export default function App() {
   const [submitted, setSubmitted] = useState(false);
   const [loadingApp, setLoadingApp] = useState(true);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [boCount, setBoCount] = useState(3);
   const contentRef = useRef();
 
   // Parse app ID from URL hash: #app/UUID
@@ -2593,7 +2666,7 @@ export default function App() {
         {/* Form body */}
         <div className="sp-form-body" style={{ flex: 1, padding: "40px 40px 40px", maxWidth: 800, width: "100%", position: "relative", zIndex: 1 }}>
           <div className="sp-fade" key={step}>
-            {renderStep(step, data, set)}
+            {renderStep(step, data, set, boCount, setBoCount)}
           </div>
         </div>
 
