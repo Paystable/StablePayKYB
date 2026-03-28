@@ -350,12 +350,20 @@ function FaceLiveness({ value, onChange }) {
   const startLiveness = useCallback(async () => {
     setError("");
     setLoading(true);
+    setActive(true);
+    setStep(0);
+    setCaptures([]);
+    setHoldProgress(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
       });
       streamRef.current = stream;
+
+      // Wait for video element to be available after render
+      await new Promise(r => setTimeout(r, 100));
       const video = videoRef.current;
+      if (!video) throw new Error("Video element not ready. Please try again.");
       video.srcObject = stream;
       await video.play();
 
@@ -375,12 +383,7 @@ function FaceLiveness({ value, onChange }) {
         });
       }
       landmarkerRef.current = faceLandmarker;
-
-      setActive(true);
       setLoading(false);
-      setStep(0);
-      setCaptures([]);
-      setHoldProgress(0);
 
       let currentStep = 0, holdStart = 0, completed = [], lastTime = 0;
 
@@ -454,7 +457,7 @@ function FaceLiveness({ value, onChange }) {
       };
       rafRef.current = requestAnimationFrame(detect);
     } catch (e) {
-      setLoading(false);
+      stopCamera();
       setError(e.name === "NotAllowedError" ? "Camera access denied. Please allow camera access in your browser settings." : `Failed to initialise face detection: ${e.message || "Unknown error"}. Try refreshing the page.`);
     }
   }, [stopCamera, onChange, captureFrame, drawOvalGuide]);
@@ -519,16 +522,6 @@ function FaceLiveness({ value, onChange }) {
     );
   }
 
-  if (loading) {
-    return (
-      <div style={{ border: `1px solid ${T.bdrFocus}`, borderRadius: 12, padding: "40px 20px", textAlign: "center", background: T.bg1 }}>
-        <div style={{ width: 32, height: 32, border: `3px solid ${T.bdr}`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-        <div style={{ fontSize: 13, color: T.txt2, fontWeight: 500 }}>Initialising face detection...</div>
-        <div style={{ fontSize: 11, color: T.txt3, marginTop: 4 }}>Loading MediaPipe model</div>
-      </div>
-    );
-  }
-
   const challenge = LIVENESS_CHALLENGES[step];
 
   return (
@@ -537,6 +530,14 @@ function FaceLiveness({ value, onChange }) {
         <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transform: "scaleX(-1)" }} playsInline muted />
         <canvas ref={overlayRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", transform: "scaleX(-1)" }} />
         <canvas ref={canvasRef} style={{ display: "none" }} />
+
+        {/* Loading overlay */}
+        {loading && (
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 10 }}>
+            <div style={{ width: 32, height: 32, border: `3px solid ${T.bdr}`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", marginBottom: 12 }} />
+            <div style={{ fontSize: 13, color: "#fff", fontWeight: 500 }}>Loading face detection model...</div>
+          </div>
+        )}
 
         {/* Top status bar */}
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "12px 16px", background: "linear-gradient(rgba(0,0,0,0.7), transparent)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
