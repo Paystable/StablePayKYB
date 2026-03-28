@@ -1,30 +1,33 @@
+
+
+
 import { useState, useRef, useEffect, useCallback } from "react";
 
 /* ─────────────────────────────────────────────
    STABLE PAY BRAND TOKENS
-   Extracted from stablepay.global design system
+   Matched to stablepay.global landing page design
 ───────────────────────────────────────────── */
 const T = {
-  /* backgrounds */
-  bg0: "#04080F",        // page bg
-  bg1: "#070D1A",        // card bg
-  bg2: "#0A1220",        // input bg
-  bg3: "#0E1929",        // hover / subtle panel
-  bg4: "#132032",        // active / elevated card
+  /* backgrounds — aligned with landing #0a0a0f base */
+  bg0: "#0a0a0f",        // page bg
+  bg1: "#0f0f18",        // card bg
+  bg2: "#141420",        // input bg
+  bg3: "#1a1a28",        // hover / subtle panel
+  bg4: "#202030",        // active / elevated card
   /* borders */
-  bdr:  "#142035",
-  bdrA: "#1D3058",
-  bdrFocus: "#2D6AF6",
-  /* brand blue */
-  blue:  "#2D6AF6",
-  blueL: "#5B8FF9",
-  blueD: "#1A4FC4",
-  blueGlow: "rgba(45,106,246,0.18)",
-  blueGlowS: "rgba(45,106,246,0.08)",
+  bdr:  "#1e1e30",
+  bdrA: "#2d2d45",
+  bdrFocus: "#6667AB",
+  /* brand purple — #6667AB from stablepay.global */
+  blue:  "#6667AB",
+  blueL: "#8889C0",
+  blueD: "#5A5B9F",
+  blueGlow: "rgba(102,103,171,0.18)",
+  blueGlowS: "rgba(102,103,171,0.08)",
   /* text */
-  txt:  "#EDF3FF",
-  txt2: "#8BA3C7",
-  txt3: "#4D6A92",
+  txt:  "#EEEEF2",
+  txt2: "#9999B0",
+  txt3: "#5A5A72",
   /* semantic */
   green:  "#00C896",
   greenG: "rgba(0,200,150,0.12)",
@@ -32,33 +35,38 @@ const T = {
   redG:   "rgba(240,68,56,0.12)",
   amber:  "#F79009",
   amberG: "rgba(247,144,9,0.12)",
-  /* gradient */
-  grad: "linear-gradient(135deg,#2D6AF6 0%,#1A4FC4 100%)",
-  gradS: "linear-gradient(135deg,rgba(45,106,246,0.15) 0%,rgba(26,79,196,0.06) 100%)",
+  /* gradient — brand purple */
+  grad: "linear-gradient(135deg,#6667AB 0%,#5A5B9F 100%)",
+  gradS: "linear-gradient(135deg,rgba(102,103,171,0.15) 0%,rgba(90,91,159,0.06) 100%)",
 };
 
 /* ─────────────────────────────────────────────
    GLOBAL STYLES injected once
 ───────────────────────────────────────────── */
 const GLOBAL_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
   *{box-sizing:border-box;margin:0;padding:0;}
   ::-webkit-scrollbar{width:4px;height:4px;}
   ::-webkit-scrollbar-track{background:${T.bg0};}
   ::-webkit-scrollbar-thumb{background:${T.bdrA};border-radius:4px;}
   input:-webkit-autofill{-webkit-box-shadow:0 0 0 100px ${T.bg2} inset!important;-webkit-text-fill-color:${T.txt}!important;}
   ::selection{background:${T.blueGlow};color:${T.txt};}
-  @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
   @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
   @keyframes spin{to{transform:rotate(360deg)}}
   @keyframes shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
-  @keyframes glow{0%,100%{box-shadow:0 0 8px rgba(45,106,246,.3)}50%{box-shadow:0 0 20px rgba(45,106,246,.6)}}
-  .sp-fade{animation:fadeUp .32s ease both;}
-  .sp-input:focus{outline:none!important;border-color:${T.bdrFocus}!important;box-shadow:0 0 0 3px ${T.blueGlow}!important;}
+  @keyframes glow{0%,100%{box-shadow:0 0 8px rgba(102,103,171,.3)}50%{box-shadow:0 0 20px rgba(102,103,171,.6)}}
+  @keyframes float{0%,100%{transform:translate(0,0) scale(1)}25%{transform:translate(40px,-40px) scale(1.08)}50%{transform:translate(-30px,30px) scale(0.92)}75%{transform:translate(-40px,-30px) scale(1.04)}}
+  .sp-fade{animation:fadeUp .5s cubic-bezier(0.22,1,0.36,1) both;}
+  .sp-input:focus{outline:none!important;border-color:${T.bdrFocus}!important;box-shadow:0 0 0 3px rgba(102,103,171,0.15)!important;}
   .sp-input::placeholder{color:${T.txt3};}
-  .sp-btn-primary:hover{background:linear-gradient(135deg,#3B78FF 0%,#2358DC 100%)!important;transform:translateY(-1px);}
+  .sp-btn-primary{transition:all .3s ease!important;}
+  .sp-btn-primary:hover{background:linear-gradient(135deg,#7778B8 0%,#6667AB 100%)!important;transform:translateY(-2px);box-shadow:0 10px 40px rgba(102,103,171,0.4)!important;}
   .sp-btn-primary:active{transform:translateY(0);}
   .sp-step-item:hover .sp-step-label{color:${T.blueL}!important;}
+  .sp-glass{background:linear-gradient(180deg,rgba(255,255,255,0.05) 0%,rgba(255,255,255,0.02) 100%);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(10px);}
+  .sp-grid-bg{background-image:linear-gradient(rgba(102,103,171,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(102,103,171,0.03) 1px,transparent 1px);background-size:60px 60px;}
+  .sp-noise{position:fixed;top:0;left:0;width:100%;height:100%;opacity:0.015;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
 `;
 
 /* ─────────────────────────────────────────────
@@ -98,7 +106,7 @@ function Input({ value, onChange, placeholder, type = "text", monospace }) {
       style={{
         width: "100%", background: T.bg2, border: `1.5px solid ${f ? T.bdrFocus : T.bdr}`,
         borderRadius: 8, padding: "10px 14px", color: T.txt,
-        fontSize: monospace ? 12.5 : 13.5, fontFamily: monospace ? "'IBM Plex Mono', monospace" : "'Outfit', sans-serif",
+        fontSize: monospace ? 12.5 : 13.5, fontFamily: monospace ? "'IBM Plex Mono', monospace" : "'Inter', system-ui, sans-serif",
         transition: "border-color .18s, box-shadow .18s",
       }}
       onFocus={() => setF(true)} onBlur={() => setF(false)}
@@ -118,7 +126,7 @@ function Textarea({ value, onChange, placeholder, rows = 3, monospace }) {
       style={{
         width: "100%", background: T.bg2, border: `1.5px solid ${f ? T.bdrFocus : T.bdr}`,
         borderRadius: 8, padding: "10px 14px", color: T.txt,
-        fontSize: monospace ? 12.5 : 13.5, fontFamily: monospace ? "'IBM Plex Mono', monospace" : "'Outfit', sans-serif",
+        fontSize: monospace ? 12.5 : 13.5, fontFamily: monospace ? "'IBM Plex Mono', monospace" : "'Inter', system-ui, sans-serif",
         resize: "vertical", lineHeight: 1.6, transition: "border-color .18s, box-shadow .18s",
       }}
       onFocus={() => setF(true)} onBlur={() => setF(false)}
@@ -137,7 +145,7 @@ function Select({ value, onChange, options, placeholder }) {
         style={{
           width: "100%", background: T.bg2, border: `1.5px solid ${f ? T.bdrFocus : T.bdr}`,
           borderRadius: 8, padding: "10px 38px 10px 14px", color: value ? T.txt : T.txt3,
-          fontSize: 13.5, fontFamily: "'Outfit', sans-serif", cursor: "pointer",
+          fontSize: 13.5, fontFamily: "'Inter', system-ui, sans-serif", cursor: "pointer",
           appearance: "none", transition: "border-color .18s",
         }}
         onFocus={() => setF(true)} onBlur={() => setF(false)}
@@ -162,7 +170,7 @@ function RadioGroup({ value, onChange, options }) {
             display: "flex", alignItems: "center", gap: 8, padding: "9px 16px",
             border: `1.5px solid ${sel ? T.bdrFocus : T.bdr}`,
             borderRadius: 8, cursor: "pointer", background: sel ? T.blueGlowS : "transparent",
-            color: sel ? T.blueL : T.txt2, fontSize: 13, fontFamily: "'Outfit', sans-serif",
+            color: sel ? T.blueL : T.txt2, fontSize: 13, fontFamily: "'Inter', system-ui, sans-serif",
             transition: "all .16s", fontWeight: sel ? 600 : 400,
           }}>
             <div style={{
@@ -205,35 +213,36 @@ function Checkbox({ label, checked, onChange, accent }) {
 
 function FileUpload({ value, onChange, hint }) {
   const ref = useRef();
+  const displayName = typeof value === "object" ? value?.name : value;
   return (
     <div
       onClick={() => ref.current.click()}
       style={{
-        border: `1.5px dashed ${value ? T.blue : T.bdrA}`, borderRadius: 8,
+        border: `1.5px dashed ${displayName ? T.blue : T.bdrA}`, borderRadius: 8,
         padding: "16px 20px", cursor: "pointer", textAlign: "center",
-        background: value ? T.blueGlowS : T.bg2, transition: "all .2s",
+        background: displayName ? T.blueGlowS : T.bg2, transition: "all .2s",
         display: "flex", alignItems: "center", gap: 12,
       }}
     >
-      <input type="file" ref={ref} style={{ display: "none" }} onChange={e => onChange?.(e.target.files?.[0]?.name || "")} />
+      <input type="file" ref={ref} style={{ display: "none" }} onChange={e => {
+        const file = e.target.files?.[0];
+        if (file) onChange?.({ file, name: file.name });
+      }} accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" />
       <div style={{
-        width: 32, height: 32, borderRadius: 8, background: value ? T.blueGlow : T.bg3,
+        width: 32, height: 32, borderRadius: 8, background: displayName ? T.blueGlow : T.bg3,
         display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
       }}>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          {value
-            ? <path d="M2 10V13H14V10M8 2V10M5 5L8 2L11 5" stroke={T.blue} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            : <path d="M2 10V13H14V10M8 2V10M5 5L8 2L11 5" stroke={T.txt3} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          }
+          <path d="M2 10V13H14V10M8 2V10M5 5L8 2L11 5" stroke={displayName ? T.blue : T.txt3} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>
       </div>
       <div style={{ textAlign: "left", flex: 1 }}>
-        <div style={{ fontSize: 13, color: value ? T.blueL : T.txt2, fontWeight: 500 }}>
-          {value || "Upload document"}
+        <div style={{ fontSize: 13, color: displayName ? T.blueL : T.txt2, fontWeight: 500 }}>
+          {displayName || "Upload document"}
         </div>
-        {!value && <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 2 }}>{hint || "PDF, JPG, PNG — max 10MB"}</div>}
+        {!displayName && <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 2 }}>{hint || "PDF, JPG, PNG — max 10MB"}</div>}
       </div>
-      {!value && (
+      {!displayName && (
         <div style={{
           fontSize: 11, padding: "5px 12px", borderRadius: 6, border: `1px solid ${T.bdrA}`,
           color: T.txt2, background: T.bg3, whiteSpace: "nowrap",
@@ -243,16 +252,19 @@ function FileUpload({ value, onChange, hint }) {
   );
 }
 
+
+
 function InfoBox({ type = "info", children }) {
   const cfg = {
-    info:  { bg: T.blueGlowS, bdr: T.blue+"33", icon: "ℹ", col: T.blueL },
+    info:  { bg: "linear-gradient(180deg, rgba(102,103,171,0.08) 0%, rgba(102,103,171,0.03) 100%)", bdr: "rgba(102,103,171,0.2)", icon: "ℹ", col: T.blueL },
     warn:  { bg: T.amberG, bdr: T.amber+"44", icon: "⚠", col: T.amber },
-    legal: { bg: "rgba(13,23,40,.7)", bdr: T.bdrA, icon: "§", col: T.txt3 },
+    legal: { bg: "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)", bdr: "rgba(255,255,255,0.08)", icon: "§", col: T.txt3 },
   }[type];
   return (
     <div style={{
-      background: cfg.bg, border: `1px solid ${cfg.bdr}`, borderRadius: 10,
+      background: cfg.bg, border: `1px solid ${cfg.bdr}`, borderRadius: 12,
       padding: "12px 16px", marginBottom: 20, display: "flex", gap: 10, alignItems: "flex-start",
+      backdropFilter: "blur(10px)",
     }}>
       <span style={{ fontSize: 14, color: cfg.col, flexShrink: 0, marginTop: 1 }}>{cfg.icon}</span>
       <div style={{ fontSize: 12.5, color: T.txt2, lineHeight: 1.65 }}>{children}</div>
@@ -299,27 +311,21 @@ const STEPS = [
 function Sidebar({ step, setStep }) {
   return (
     <div style={{
-      width: 256, flexShrink: 0, background: T.bg1,
-      borderRight: `1px solid ${T.bdr}`, padding: "32px 0",
+      width: 256, flexShrink: 0,
+      background: "linear-gradient(180deg, rgba(15,15,24,0.98) 0%, rgba(10,10,15,0.98) 100%)",
+      borderRight: `1px solid rgba(255,255,255,0.06)`,
+      padding: "32px 0",
       display: "flex", flexDirection: "column",
+      backdropFilter: "blur(20px)",
     }}>
       {/* Logo */}
       <div style={{ padding: "0 24px 28px", borderBottom: `1px solid ${T.bdr}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8, background: T.grad,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M8 2L13 5V11L8 14L3 11V5L8 2Z" stroke="#fff" strokeWidth="1.5" fill="rgba(255,255,255,.15)"/>
-              <path d="M5.5 8H10.5M8 5.5V10.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-          </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.txt, fontFamily: "'Outfit', sans-serif", letterSpacing: ".02em" }}>
-              StablePay
+            <div style={{ fontSize: 15, fontWeight: 400, color: T.blueL, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: ".01em" }}>
+              Stable Pay
             </div>
-            <div style={{ fontSize: 10, color: T.txt3, letterSpacing: ".06em" }}>KYB ONBOARDING</div>
+            <div style={{ fontSize: 9.5, color: T.txt3, letterSpacing: ".06em" }}>KYB ONBOARDING</div>
           </div>
         </div>
         <div style={{ marginTop: 14, padding: "8px 10px", background: T.bg0, borderRadius: 7, border: `1px solid ${T.bdr}` }}>
@@ -365,7 +371,7 @@ function Sidebar({ step, setStep }) {
                 }
               </div>
               <div style={{ flex: 1, textAlign: "left" }}>
-                <div className="sp-step-label" style={{ fontSize: 12.5, fontWeight: active ? 600 : 400, color: active ? T.txt : done ? T.txt2 : T.txt3, fontFamily: "'Outfit', sans-serif", transition: "color .16s" }}>
+                <div className="sp-step-label" style={{ fontSize: 12.5, fontWeight: active ? 600 : 400, color: active ? T.txt : done ? T.txt2 : T.txt3, fontFamily: "'Inter', system-ui, sans-serif", transition: "color .16s" }}>
                   {s.label}
                 </div>
               </div>
@@ -384,16 +390,10 @@ function Sidebar({ step, setStep }) {
         })}
       </div>
 
-      {/* FIU badge */}
+      {/* Sidebar footer */}
       <div style={{ padding: "16px 24px", borderTop: `1px solid ${T.bdr}` }}>
-        <div style={{
-          padding: "10px 12px", background: T.bg0, borderRadius: 8, border: `1px solid ${T.bdrA}`,
-        }}>
-          <div style={{ fontSize: 10, color: T.txt3, marginBottom: 4, letterSpacing: ".06em" }}>COMPLIANCE STANDARD</div>
-          <div style={{ fontSize: 11.5, color: T.txt2, fontWeight: 500, lineHeight: 1.5 }}>
-            PMLA 2002 · FIU-IND<br/>
-            <span style={{ color: T.txt3 }}>RBI KYC MD · FATF Rec.</span>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11, color: T.txt3 }}>stablepay.global</span>
         </div>
       </div>
     </div>
@@ -410,7 +410,7 @@ function SectionHead({ label, title, description, compliance }) {
         <span style={{ fontSize: 10.5, fontWeight: 600, color: T.blue, letterSpacing: ".1em", textTransform: "uppercase" }}>{label}</span>
         {compliance && compliance.map(c => <Tag key={c} color={c === "FIU-IND" || c === "PMLA" ? "amber" : "blue"}>{c}</Tag>)}
       </div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: T.txt, fontFamily: "'Outfit', sans-serif", letterSpacing: "-.02em", marginBottom: 8 }}>{title}</h2>
+      <h2 style={{ fontSize: 22, fontWeight: 700, color: T.txt, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: "-.02em", marginBottom: 8 }}>{title}</h2>
       {description && <p style={{ fontSize: 13.5, color: T.txt2, lineHeight: 1.65, maxWidth: 540 }}>{description}</p>}
     </div>
   );
@@ -440,7 +440,7 @@ function AIAssistant({ currentStep }) {
     setMsgs(m => [...m, { r: "u", t: txt }]);
     setLoading(true);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -483,7 +483,7 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
           background: open ? T.bg3 : T.grad,
           border: `1.5px solid ${open ? T.bdrA : "transparent"}`,
           cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: open ? "none" : "0 8px 24px rgba(45,106,246,.4)",
+          boxShadow: open ? "none" : "0 8px 24px rgba(102,103,171,.4)",
           transition: "all .2s", animation: open ? "none" : "glow 3s ease-in-out infinite",
         }}
       >
@@ -499,10 +499,12 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
       {open && (
         <div style={{
           position: "fixed", bottom: 92, right: 28, zIndex: 1100,
-          width: 368, height: 520, background: T.bg1,
-          border: `1px solid ${T.bdrA}`, borderRadius: 16,
+          width: 368, height: 520,
+          background: "linear-gradient(180deg, rgba(20,20,30,0.95) 0%, rgba(10,10,15,0.98) 100%)",
+          border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16,
           display: "flex", flexDirection: "column",
-          boxShadow: "0 24px 64px rgba(0,0,0,.7)",
+          boxShadow: "0 0 0 1px rgba(102,103,171,0.1), 0 24px 64px rgba(0,0,0,.7), 0 0 80px -20px rgba(102,103,171,0.2)",
+          backdropFilter: "blur(20px)",
           animation: "fadeUp .22s ease both",
         }}>
           {/* header */}
@@ -517,7 +519,7 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
                 {stepLabels[currentStep]}
               </div>
             </div>
-            <div style={{ marginLeft: "auto", fontSize: 10, color: T.txt3, padding: "3px 7px", background: T.amberG, borderRadius: 4, color: T.amber }}>PMLA · FIU</div>
+            <div style={{ marginLeft: "auto", fontSize: 10, padding: "3px 7px", background: T.amberG, borderRadius: 4, color: T.amber }}>PMLA · FIU</div>
           </div>
 
           {/* messages */}
@@ -545,7 +547,7 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
             {QUICK.map(q => (
               <button key={q} onClick={() => setInp(q)} style={{
                 fontSize: 10.5, padding: "4px 9px", borderRadius: 20, border: `1px solid ${T.bdrA}`,
-                background: "transparent", color: T.txt3, cursor: "pointer", fontFamily: "'Outfit', sans-serif",
+                background: "transparent", color: T.txt3, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
               }}>{q}</button>
             ))}
           </div>
@@ -560,7 +562,7 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
               className="sp-input"
               style={{
                 flex: 1, background: T.bg2, border: `1.5px solid ${T.bdr}`, borderRadius: 20,
-                padding: "8px 14px", color: T.txt, fontSize: 12.5, fontFamily: "'Outfit', sans-serif",
+                padding: "8px 14px", color: T.txt, fontSize: 12.5, fontFamily: "'Inter', system-ui, sans-serif",
               }}
             />
             <button onClick={send} disabled={!inp.trim() || loading} style={{
@@ -1083,9 +1085,14 @@ export default function App() {
   if (submitted) {
     const ref = `SP-OTC-${Date.now().toString(36).toUpperCase().slice(-8)}`;
     return (
-      <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Outfit', sans-serif", padding: 24 }}>
+      <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 24, position: "relative", overflow: "hidden" }}>
         <style>{GLOBAL_CSS}</style>
-        <div className="sp-fade" style={{ maxWidth: 520, width: "100%", textAlign: "center", padding: "48px 40px", background: T.bg1, borderRadius: 20, border: `1px solid ${T.bdrA}` }}>
+        <div className="sp-grid-bg" style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
+        <div className="sp-noise" />
+        {/* Glow orbs */}
+        <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.2) 0%, transparent 70%)", top: -150, right: -100, filter: "blur(80px)", animation: "float 25s ease-in-out infinite" }} />
+        <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.15) 0%, transparent 70%)", bottom: -100, left: -100, filter: "blur(80px)", animation: "float 25s ease-in-out infinite", animationDelay: "-8s" }} />
+        <div className="sp-fade" style={{ maxWidth: 520, width: "100%", textAlign: "center", padding: "48px 40px", background: "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(10px)", position: "relative", zIndex: 1, boxShadow: "0 20px 50px -10px rgba(0,0,0,0.5), 0 0 100px -20px rgba(102,103,171,0.2)" }}>
           <div style={{ width: 64, height: 64, borderRadius: "50%", background: T.greenG, border: `2px solid ${T.green}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px", fontSize: 28 }}>✓</div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: T.txt, marginBottom: 10, letterSpacing: "-.02em" }}>Application Submitted</h1>
           <p style={{ color: T.txt2, fontSize: 14, lineHeight: 1.7, marginBottom: 28 }}>
@@ -1100,7 +1107,7 @@ export default function App() {
             ].map(([k, v, mono]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${T.bdr}` }}>
                 <span style={{ fontSize: 11.5, color: T.txt3 }}>{k}</span>
-                <span style={{ fontSize: mono ? 12 : 13, fontFamily: mono ? "'IBM Plex Mono', monospace" : "'Outfit', sans-serif", color: mono ? T.blueL : T.txt, fontWeight: mono ? 600 : 400 }}>{v}</span>
+                <span style={{ fontSize: mono ? 12 : 13, fontFamily: mono ? "'IBM Plex Mono', monospace" : "'Inter', system-ui, sans-serif", color: mono ? T.blueL : T.txt, fontWeight: mono ? 600 : 400 }}>{v}</span>
               </div>
             ))}
           </div>
@@ -1111,21 +1118,27 @@ export default function App() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", fontFamily: "'Outfit', sans-serif", color: T.txt }}>
+    <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", fontFamily: "'Inter', system-ui, sans-serif", color: T.txt, position: "relative" }}>
       <style>{GLOBAL_CSS}</style>
+      <div className="sp-noise" />
 
       {/* Sidebar */}
-      <div style={{ position: "sticky", top: 0, height: "100vh", flexShrink: 0 }}>
+      <div style={{ position: "sticky", top: 0, height: "100vh", flexShrink: 0, zIndex: 10 }}>
         <Sidebar step={step} setStep={goTo} />
       </div>
 
       {/* Main content */}
-      <div ref={contentRef} style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+      <div ref={contentRef} style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", position: "relative" }}>
+        {/* Background effects */}
+        <div className="sp-grid-bg" style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }} />
+        <div style={{ position: "fixed", width: 600, height: 600, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.12) 0%, transparent 70%)", top: -200, right: -100, filter: "blur(80px)", animation: "float 25s ease-in-out infinite", pointerEvents: "none", zIndex: 0 }} />
+        <div style={{ position: "fixed", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(136,137,192,0.08) 0%, transparent 70%)", bottom: "20%", left: 200, filter: "blur(80px)", animation: "float 25s ease-in-out infinite", animationDelay: "-12s", pointerEvents: "none", zIndex: 0 }} />
+
         {/* Top bar */}
         <div style={{
           position: "sticky", top: 0, zIndex: 50,
-          background: `${T.bg0}ee`, backdropFilter: "blur(12px)",
-          borderBottom: `1px solid ${T.bdr}`,
+          background: "rgba(10,10,15,0.85)", backdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
           padding: "14px 40px", display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1133,18 +1146,14 @@ export default function App() {
             <span style={{ color: T.bdrA }}>/</span>
             <span style={{ fontSize: 12.5, color: T.txt2, fontWeight: 500 }}>{STEPS[step].label}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
-              <span style={{ fontSize: 11.5, color: T.txt3 }}>Encrypted · Secure</span>
-            </div>
-            <div style={{ height: 16, width: 1, background: T.bdrA }} />
-            <span style={{ fontSize: 11.5, color: T.txt3, fontFamily: "'IBM Plex Mono', monospace" }}>PMLA · FIU-IND</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
+            <span style={{ fontSize: 11.5, color: T.txt3 }}>Secure</span>
           </div>
         </div>
 
         {/* Form body */}
-        <div style={{ flex: 1, padding: "40px 40px 40px", maxWidth: 800, width: "100%" }}>
+        <div style={{ flex: 1, padding: "40px 40px 40px", maxWidth: 800, width: "100%", position: "relative", zIndex: 1 }}>
           <div className="sp-fade" key={step}>
             {renderStep(step, data, set)}
           </div>
@@ -1152,9 +1161,9 @@ export default function App() {
 
         {/* Bottom nav */}
         <div style={{
-          position: "sticky", bottom: 0,
-          background: `${T.bg0}f0`, backdropFilter: "blur(12px)",
-          borderTop: `1px solid ${T.bdr}`,
+          position: "sticky", bottom: 0, zIndex: 50,
+          background: "rgba(10,10,15,0.88)", backdropFilter: "blur(16px)",
+          borderTop: "1px solid rgba(255,255,255,0.06)",
           padding: "16px 40px", display: "flex", justifyContent: "space-between", alignItems: "center",
         }}>
           <button
@@ -1165,7 +1174,7 @@ export default function App() {
               border: `1.5px solid ${step === 0 ? T.bdr : T.bdrA}`,
               background: "transparent", color: step === 0 ? T.txt3 : T.txt2,
               fontSize: 13.5, fontWeight: 500, cursor: step === 0 ? "not-allowed" : "pointer",
-              fontFamily: "'Outfit', sans-serif", transition: "all .16s", display: "flex", alignItems: "center", gap: 8,
+              fontFamily: "'Inter', system-ui, sans-serif", transition: "all .16s", display: "flex", alignItems: "center", gap: 8,
             }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 11L5 7L9 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1190,8 +1199,8 @@ export default function App() {
                 padding: "10px 28px", borderRadius: 8, border: "none",
                 background: T.grad, color: "#fff",
                 fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-                fontFamily: "'Outfit', sans-serif", transition: "all .2s",
-                boxShadow: `0 4px 16px rgba(45,106,246,.3)`,
+                fontFamily: "'Inter', system-ui, sans-serif", transition: "all .2s",
+                boxShadow: "0 4px 16px rgba(102,103,171,.3)",
                 display: "flex", alignItems: "center", gap: 8,
               }}
             >
@@ -1206,7 +1215,7 @@ export default function App() {
                 padding: "10px 28px", borderRadius: 8, border: "none",
                 background: "linear-gradient(135deg, #00C896, #009B72)",
                 color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
-                fontFamily: "'Outfit', sans-serif", transition: "all .2s",
+                fontFamily: "'Inter', system-ui, sans-serif", transition: "all .2s",
                 boxShadow: "0 4px 16px rgba(0,200,150,.3)",
                 display: "flex", alignItems: "center", gap: 8,
               }}
