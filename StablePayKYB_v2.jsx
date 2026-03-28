@@ -1070,13 +1070,16 @@ function DocumentBuilder({ data, value, onChange }) {
   const [docDate, setDocDate] = useState(value?.date || new Date().toISOString().split("T")[0]);
   const [signatureImage, setSignatureImage] = useState(value?.signatureImage || null);
   const [showUploadFallback, setShowUploadFallback] = useState(false);
+  const [editCompanyName, setEditCompanyName] = useState(value?.companyName || data?.co_name || "");
+  const [companyLogo, setCompanyLogo] = useState(value?.companyLogo || null);
+  const logoInputRef = useRef(null);
 
   const canvasRef = useRef(null);
   const isDrawing = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
   const fileRef = useRef(null);
 
-  const companyName = data?.co_name || "COMPANY NAME";
+  const companyName = editCompanyName || data?.co_name || "COMPANY NAME";
   const crn = data?.co_crn || "";
   const regAddr = data?.co_regAddr || "";
   const formattedDate = docDate ? new Date(docDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
@@ -1157,7 +1160,8 @@ function DocumentBuilder({ data, value, onChange }) {
       signerTitle,
       place,
       date: docDate,
-      companyName,
+      companyLogo,
+      companyName: editCompanyName || companyName,
       crn,
       regAddr,
       completed: true,
@@ -1196,7 +1200,7 @@ function DocumentBuilder({ data, value, onChange }) {
           ${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}
           ${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}
         </div>
-        <div class="logo-placeholder">Company<br/>Logo</div>
+        ${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div class="logo-placeholder">Company<br/>Logo</div>`}
       </div>
       <hr/>
       <h1>BOARD RESOLUTION</h1>
@@ -1324,15 +1328,21 @@ function DocumentBuilder({ data, value, onChange }) {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1 }}>{companyName}</div>
+                <input defaultValue={companyName} onBlur={e => setEditCompanyName(e.target.value)} style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1, border: "none", borderBottom: "1px dashed #bbb", background: "transparent", outline: "none", width: "100%", fontFamily: "'Inter', sans-serif" }} placeholder="Company Name" />
                 {crn && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CRN: {crn}</div>}
                 {regAddr && <div style={{ fontSize: 11, color: "#666", marginTop: 2, maxWidth: 360, lineHeight: 1.4 }}>{regAddr}</div>}
               </div>
-              <div style={{
+              <div onClick={() => logoInputRef.current?.click()} style={{
                 width: 72, height: 72, border: "1.5px dashed #ccc", borderRadius: 8,
                 display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                color: "#aaa", fontSize: 9, textAlign: "center", lineHeight: 1.3,
-              }}>Company<br/>Logo</div>
+                color: "#aaa", fontSize: 9, textAlign: "center", lineHeight: 1.3, cursor: "pointer", overflow: "hidden",
+              }}>
+                {companyLogo ? <img src={companyLogo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <>Click to<br/>add logo</>}
+                <input ref={logoInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) { const reader = new FileReader(); reader.onload = ev => setCompanyLogo(ev.target.result); reader.readAsDataURL(file); }
+                }} />
+              </div>
             </div>
 
             {/* Divider */}
@@ -1487,6 +1497,311 @@ function DocumentBuilder({ data, value, onChange }) {
               background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
               fontFamily: "'Inter', sans-serif",
             }}>Save Document</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   CORPORATE STRUCTURE CHART — Org-chart style builder
+───────────────────────────────────────────── */
+function CorporateStructureChart({ data, value, onChange }) {
+  const [mode, setMode] = useState(value?.completed ? "completed" : "builder");
+  const [entities, setEntities] = useState(value?.entities || [
+    { id: 1, name: data?.co_name || "", type: "company", pct: "100", parent: null, level: 0 },
+    { id: 2, name: "", type: "shareholder", pct: "", parent: 1, level: 1 },
+    { id: 3, name: "", type: "shareholder", pct: "", parent: 1, level: 1 },
+  ]);
+  const [showUpload, setShowUpload] = useState(false);
+  const nextId = useRef(4);
+
+  const addEntity = (parentId) => {
+    const parent = entities.find(e => e.id === parentId);
+    setEntities([...entities, { id: nextId.current++, name: "", type: "shareholder", pct: "", parent: parentId, level: (parent?.level || 0) + 1 }]);
+  };
+
+  const updateEntity = (id, field, val) => {
+    setEntities(entities.map(e => e.id === id ? { ...e, [field]: val } : e));
+  };
+
+  const removeEntity = (id) => {
+    // Remove entity and all children
+    const toRemove = new Set();
+    const findChildren = (pid) => { entities.forEach(e => { if (e.parent === pid) { toRemove.add(e.id); findChildren(e.id); } }); };
+    toRemove.add(id);
+    findChildren(id);
+    setEntities(entities.filter(e => !toRemove.has(e.id)));
+  };
+
+  const saveChart = () => {
+    onChange?.({ type: "structure_chart", entities, completed: true });
+    setMode("completed");
+  };
+
+  const getChildren = (parentId) => entities.filter(e => e.parent === parentId);
+
+  const renderNode = (entity) => {
+    const children = getChildren(entity.id);
+    const isRoot = entity.parent === null;
+    return (
+      <div key={entity.id} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        {/* Node */}
+        <div style={{
+          border: isRoot ? "2px solid #6667AB" : "1.5px solid #ccc", borderRadius: 10,
+          padding: "10px 14px", minWidth: 160, background: isRoot ? "#f0f0ff" : "#fff",
+          position: "relative", textAlign: "center",
+        }}>
+          <input defaultValue={entity.name} onBlur={e => updateEntity(entity.id, "name", e.target.value)}
+            placeholder={isRoot ? "Entity name" : "Shareholder name"}
+            style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#1a1a1a", fontSize: 12, fontFamily: "'Inter', sans-serif", padding: "2px 0", outline: "none", width: "100%", textAlign: "center", fontWeight: isRoot ? 600 : 400 }}
+          />
+          {!isRoot && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 6 }}>
+              <input defaultValue={entity.pct} onBlur={e => updateEntity(entity.id, "pct", e.target.value)}
+                placeholder="%" style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#1a1a1a", fontSize: 11, fontFamily: "'IBM Plex Mono', monospace", padding: "2px 0", outline: "none", width: 40, textAlign: "center" }}
+              />
+              <span style={{ fontSize: 10, color: "#999" }}>%</span>
+              <select defaultValue={entity.type} onChange={e => updateEntity(entity.id, "type", e.target.value)}
+                style={{ border: "1px solid #ddd", borderRadius: 4, background: "#f9f9f9", color: "#555", fontSize: 10, padding: "2px 4px", outline: "none", marginLeft: 6 }}>
+                <option value="shareholder">Individual</option>
+                <option value="entity">Entity</option>
+                <option value="trust">Trust</option>
+              </select>
+            </div>
+          )}
+          {!isRoot && (
+            <button onClick={() => removeEntity(entity.id)} style={{ position: "absolute", top: -6, right: -6, width: 16, height: 16, borderRadius: "50%", border: "1px solid #ddd", background: "#fff", color: "#999", fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>x</button>
+          )}
+        </div>
+
+        {/* Connector + children */}
+        {(children.length > 0 || entity.type === "entity" || isRoot) && (
+          <>
+            <div style={{ width: 1, height: 20, background: "#ccc" }} />
+            <div style={{ display: "flex", gap: 16, alignItems: "flex-start", position: "relative" }}>
+              {children.length > 1 && <div style={{ position: "absolute", top: 0, left: "calc(50% - " + ((children.length - 1) * 88) + "px)", right: "calc(50% - " + ((children.length - 1) * 88) + "px)", height: 1, background: "#ccc" }} />}
+              {children.map(child => (
+                <div key={child.id} style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ width: 1, height: 12, background: "#ccc" }} />
+                  {renderNode(child)}
+                </div>
+              ))}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                <div style={{ width: 1, height: 12, background: "#ccc" }} />
+                <button onClick={() => addEntity(entity.id)} style={{
+                  width: 32, height: 32, borderRadius: "50%", border: "1.5px dashed #bbb",
+                  background: "transparent", color: "#999", fontSize: 16, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>+</button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const generateChartHTML = () => {
+    const renderHTMLNode = (entity, depth = 0) => {
+      const children = getChildren(entity.id);
+      const isRoot = entity.parent === null;
+      return `<div style="text-align:center;margin:${depth > 0 ? '0' : '20px'} auto;">
+        <div style="display:inline-block;border:${isRoot ? '2px solid #6667AB' : '1.5px solid #ccc'};border-radius:8px;padding:10px 20px;background:${isRoot ? '#f0f0ff' : '#fff'};min-width:140px;">
+          <div style="font-weight:${isRoot ? '700' : '500'};font-size:13px;">${entity.name || (isRoot ? 'Company' : 'Shareholder')}</div>
+          ${!isRoot ? `<div style="font-size:11px;color:#666;margin-top:4px;">${entity.pct || '\u2014'}% \u00b7 ${entity.type === 'entity' ? 'Entity' : entity.type === 'trust' ? 'Trust' : 'Individual'}</div>` : `<div style="font-size:10px;color:#666;margin-top:2px;">Operating Entity</div>`}
+        </div>
+        ${children.length > 0 ? `<div style="width:1px;height:20px;background:#ccc;margin:0 auto;"></div><div style="display:flex;justify-content:center;gap:20px;">${children.map(c => renderHTMLNode(c, depth + 1)).join('')}</div>` : ''}
+      </div>`;
+    };
+    const root = entities.find(e => e.parent === null);
+    return `<!DOCTYPE html><html><head><title>Corporate Structure - ${root?.name || 'Company'}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:40px;color:#1a1a1a}h1{text-align:center;font-size:16px;letter-spacing:2px;margin-bottom:8px;text-transform:uppercase}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:24px}@media print{@page{margin:15mm;size:landscape}}</style></head><body><h1>Corporate Ownership Structure</h1><p class="sub">${root?.name || 'Company'} \u2014 Ownership chain to ultimate beneficial owners</p>${root ? renderHTMLNode(root) : ''}</body></html>`;
+  };
+
+  const downloadPDF = () => {
+    const w = window.open("", "_blank");
+    w.document.write(generateChartHTML());
+    w.document.close();
+    w.onload = () => w.print();
+  };
+
+  if (mode === "completed" && value?.completed) {
+    return (
+      <div style={{ border: `1.5px solid ${T.bdr}`, borderRadius: 12, overflow: "hidden", background: T.bg1 }}>
+        <div style={{ background: "#FAFAFA", padding: "20px 24px", borderBottom: `1px solid ${T.bdr}`, position: "relative" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#1a1a1a", letterSpacing: 2, textTransform: "uppercase", textAlign: "center" }}>Corporate Structure Chart</div>
+          <div style={{ fontSize: 10, color: "#666", textAlign: "center", marginTop: 4 }}>{value.entities?.length || 0} entities</div>
+          <div style={{ position: "absolute", top: 12, right: 12, background: T.greenG, border: `1px solid ${T.green}`, borderRadius: 6, padding: "3px 10px", fontSize: 10, fontWeight: 600, color: T.green }}>Completed</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, padding: "12px 16px" }}>
+          <button onClick={() => setMode("builder")} style={{ flex: 1, padding: "8px", border: `1px solid ${T.bdrA}`, borderRadius: 8, background: T.bg2, color: T.txt2, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Edit</button>
+          <button onClick={downloadPDF} style={{ flex: 1, padding: "8px", border: "none", borderRadius: 8, background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Download PDF</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ borderRadius: 12, overflow: "hidden", border: `1.5px solid ${T.bdr}`, background: T.bg1 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: `1px solid ${T.bdr}`, background: T.bg0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2V6M4 6H12M4 6V10M12 6V10M2 10H6M10 10H14" stroke={T.blue} strokeWidth="1.2" strokeLinecap="round"/></svg>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.txt }}>Structure Chart Builder</span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {!showUpload && <button onClick={() => setShowUpload(true)} style={{ padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6, background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Upload my own</button>}
+        </div>
+      </div>
+
+      {showUpload ? (
+        <div style={{ padding: 16 }}>
+          <FileUpload value={typeof value === "object" && value?.type !== "structure_chart" ? value : null} onChange={onChange} />
+          <button onClick={() => setShowUpload(false)} style={{ marginTop: 8, padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6, background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Use builder instead</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ margin: 16, borderRadius: 8, background: "#FAFAFA", border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: "24px 16px", overflowX: "auto" }}>
+            {renderNode(entities.find(e => e.parent === null) || entities[0])}
+          </div>
+          <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: `1px solid ${T.bdr}`, justifyContent: "flex-end" }}>
+            <button onClick={downloadPDF} style={{ padding: "8px 20px", border: `1px solid ${T.bdrA}`, borderRadius: 8, background: T.bg2, color: T.txt2, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Preview / Download</button>
+            <button onClick={saveChart} style={{ padding: "8px 24px", border: "none", borderRadius: 8, background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Save Chart</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   SHAREHOLDER REGISTER — Register of Members builder
+───────────────────────────────────────────── */
+function ShareholderRegister({ data, value, onChange }) {
+  const [mode, setMode] = useState(value?.completed ? "completed" : "builder");
+  const [shareholders, setShareholders] = useState(value?.shareholders || [
+    { name: "", shares: "", pct: "", classType: "Ordinary", dateAcq: "", address: "" },
+    { name: "", shares: "", pct: "", classType: "Ordinary", dateAcq: "", address: "" },
+  ]);
+  const [registerDate, setRegisterDate] = useState(value?.registerDate || new Date().toISOString().split("T")[0]);
+  const [showUpload, setShowUpload] = useState(false);
+
+  const companyName = data?.co_name || "Company";
+
+  const addRow = () => setShareholders([...shareholders, { name: "", shares: "", pct: "", classType: "Ordinary", dateAcq: "", address: "" }]);
+  const removeRow = () => { if (shareholders.length > 1) setShareholders(shareholders.slice(0, -1)); };
+  const updateRow = (i, field, val) => setShareholders(shareholders.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
+
+  const saveRegister = () => {
+    onChange?.({ type: "shareholder_register", shareholders: shareholders.filter(s => s.name.trim()), registerDate, companyName, completed: true });
+    setMode("completed");
+  };
+
+  const generateHTML = () => {
+    const rows = shareholders.filter(s => s.name.trim()).map(s =>
+      `<tr><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;">${s.name}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.shares}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.pct}%</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.classType}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;">${s.dateAcq}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:11px;">${s.address}</td></tr>`
+    ).join("");
+    const formattedDate = registerDate ? new Date(registerDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
+    return `<!DOCTYPE html><html><head><title>Shareholder Register - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:40px 48px;color:#1a1a1a;line-height:1.6;font-size:13px}h1{font-size:15px;letter-spacing:3px;text-transform:uppercase;text-align:center;margin:20px 0 4px}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin:16px 0}th{background:#f5f5f5;padding:8px 10px;border:1px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left}.co{font-size:16px;font-weight:700;letter-spacing:1px;text-align:center;margin-bottom:4px}.date{font-size:11px;color:#555;text-align:center}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="co">${companyName}</div><h1>Register of Members</h1><p class="sub">As at ${formattedDate}</p><table><thead><tr><th>Name of Shareholder</th><th style="text-align:center">No. of Shares</th><th style="text-align:center">% Holding</th><th style="text-align:center">Class</th><th>Date Acquired</th><th>Address</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#555;">I certify that the above is a true and complete extract from the Register of Members of ${companyName} as at the date stated above.</p><div style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px"><div><div style="border-bottom:1px solid #1a1a1a;width:200px;margin-bottom:4px;height:40px"></div><div>Company Secretary / Director</div></div><div><div>Date: ${formattedDate}</div></div></div></body></html>`;
+  };
+
+  const downloadPDF = () => {
+    const w = window.open("", "_blank");
+    w.document.write(generateHTML());
+    w.document.close();
+    w.onload = () => w.print();
+  };
+
+  const dinput = (val, onBlur, ph, style = {}) => (
+    <input defaultValue={val} onBlur={e => onBlur(e.target.value)} placeholder={ph}
+      style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#1a1a1a", fontSize: 12, fontFamily: "'Inter', sans-serif", padding: "2px 4px", outline: "none", width: "100%", ...style }} />
+  );
+
+  if (mode === "completed" && value?.completed) {
+    return (
+      <div style={{ border: `1.5px solid ${T.bdr}`, borderRadius: 12, overflow: "hidden", background: T.bg1 }}>
+        <div style={{ background: "#FAFAFA", padding: "20px 24px", borderBottom: `1px solid ${T.bdr}`, position: "relative" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#1a1a1a", letterSpacing: 2, textTransform: "uppercase", textAlign: "center" }}>Register of Members</div>
+          <div style={{ fontSize: 10, color: "#666", textAlign: "center", marginTop: 4 }}>{value.shareholders?.length || 0} shareholders · {companyName}</div>
+          <div style={{ position: "absolute", top: 12, right: 12, background: T.greenG, border: `1px solid ${T.green}`, borderRadius: 6, padding: "3px 10px", fontSize: 10, fontWeight: 600, color: T.green }}>Completed</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, padding: "12px 16px" }}>
+          <button onClick={() => setMode("builder")} style={{ flex: 1, padding: "8px", border: `1px solid ${T.bdrA}`, borderRadius: 8, background: T.bg2, color: T.txt2, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Edit</button>
+          <button onClick={downloadPDF} style={{ flex: 1, padding: "8px", border: "none", borderRadius: 8, background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Download PDF</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ borderRadius: 12, overflow: "hidden", border: `1.5px solid ${T.bdr}`, background: T.bg1 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", borderBottom: `1px solid ${T.bdr}`, background: T.bg0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3H14M2 7H14M2 11H14M2 15H10" stroke={T.blue} strokeWidth="1.2" strokeLinecap="round"/></svg>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.txt }}>Shareholder Register Builder</span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {!showUpload && <button onClick={() => setShowUpload(true)} style={{ padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6, background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Upload my own</button>}
+        </div>
+      </div>
+
+      {showUpload ? (
+        <div style={{ padding: 16 }}>
+          <FileUpload value={typeof value === "object" && value?.type !== "shareholder_register" ? value : null} onChange={onChange} />
+          <button onClick={() => setShowUpload(false)} style={{ marginTop: 8, padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6, background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Use builder instead</button>
+        </div>
+      ) : (
+        <>
+          <div style={{ margin: 16, borderRadius: 8, background: "#FAFAFA", border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: "28px 24px", fontFamily: "'Inter', sans-serif", color: "#1a1a1a" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, textAlign: "center", letterSpacing: 1, marginBottom: 2 }}>{companyName}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase", textAlign: "center", margin: "12px 0 4px" }}>Register of Members</div>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <span style={{ fontSize: 11, color: "#555" }}>As at: </span>
+              <input type="date" defaultValue={registerDate} onBlur={e => setRegisterDate(e.target.value)}
+                style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#1a1a1a", fontSize: 11, fontFamily: "'Inter', sans-serif", padding: "2px 4px", outline: "none" }} />
+            </div>
+
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 600 }}>
+                <thead>
+                  <tr style={{ background: "#f0f0f0" }}>
+                    {["Name", "Shares", "%", "Class", "Date Acquired", "Address"].map(h => (
+                      <th key={h} style={{ padding: "7px 8px", border: "1px solid #ccc", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 600, color: "#555", textAlign: "left" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {shareholders.map((s, i) => (
+                    <tr key={i}>
+                      <td style={{ padding: "3px 4px", border: "1px solid #ccc" }}>{dinput(s.name, v => updateRow(i, "name", v), "Full name")}</td>
+                      <td style={{ padding: "3px 4px", border: "1px solid #ccc", width: 80 }}>{dinput(s.shares, v => updateRow(i, "shares", v), "10,000", { fontFamily: "'IBM Plex Mono', monospace", textAlign: "center" })}</td>
+                      <td style={{ padding: "3px 4px", border: "1px solid #ccc", width: 60 }}>{dinput(s.pct, v => updateRow(i, "pct", v), "%", { fontFamily: "'IBM Plex Mono', monospace", textAlign: "center" })}</td>
+                      <td style={{ padding: "3px 4px", border: "1px solid #ccc", width: 90 }}>
+                        <select defaultValue={s.classType} onChange={e => updateRow(i, "classType", e.target.value)}
+                          style={{ border: "none", background: "transparent", color: "#1a1a1a", fontSize: 11, outline: "none", width: "100%" }}>
+                          <option>Ordinary</option><option>Preference</option><option>Class A</option><option>Class B</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: "3px 4px", border: "1px solid #ccc", width: 110 }}>
+                        <input type="date" defaultValue={s.dateAcq} onBlur={e => updateRow(i, "dateAcq", e.target.value)}
+                          style={{ border: "none", background: "transparent", color: "#1a1a1a", fontSize: 11, fontFamily: "'Inter', sans-serif", outline: "none", width: "100%" }} />
+                      </td>
+                      <td style={{ padding: "3px 4px", border: "1px solid #ccc" }}>{dinput(s.address, v => updateRow(i, "address", v), "Residential address")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button onClick={addRow} style={{ border: "1px dashed #bbb", borderRadius: 6, background: "transparent", padding: "4px 12px", fontSize: 11, color: "#777", cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>+ Add shareholder</button>
+              {shareholders.length > 1 && <button onClick={removeRow} style={{ border: "1px dashed #bbb", borderRadius: 6, background: "transparent", padding: "4px 12px", fontSize: 11, color: "#999", cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Remove last</button>}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: `1px solid ${T.bdr}`, justifyContent: "flex-end" }}>
+            <button onClick={downloadPDF} style={{ padding: "8px 20px", border: `1px solid ${T.bdrA}`, borderRadius: 8, background: T.bg2, color: T.txt2, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Preview / Download</button>
+            <button onClick={saveRegister} style={{ padding: "8px 24px", border: "none", borderRadius: 8, background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Save Register</button>
           </div>
         </>
       )}
@@ -1737,11 +2052,11 @@ function renderStep(step, data, set) {
         <Field label="Board Resolution / Authorisation Letter" hint="Use our template to create your board resolution, or upload your own">
           <DocumentBuilder data={data} value={v("bo_authLetterFile")} onChange={val => set("bo_authLetterFile", val)} />
         </Field>
-        <Field label="Upload Corporate Structure Chart" required hint="Showing the full ownership chain from the entity to the ultimate natural beneficial owners. Clearly indicate percentage holdings at each level.">
-          <FileUpload value={v("bo_structureFile")} onChange={val => set("bo_structureFile", val)} />
+        <Field label="Corporate Ownership / Structure Chart" required hint="Showing the full ownership chain from the entity to the ultimate natural beneficial owners. Clearly indicate percentage holdings at each level.">
+          <CorporateStructureChart data={data} value={v("bo_structureFile")} onChange={val => set("bo_structureFile", val)} />
         </Field>
-        <Field label="Upload Shareholder Register / Register of Members" required hint="Must reflect current shareholding as of date of application">
-          <FileUpload value={v("bo_shareRegFile")} onChange={val => set("bo_shareRegFile", val)} />
+        <Field label="Shareholder Register / Register of Members" required hint="Must reflect current shareholding as of date of application">
+          <ShareholderRegister data={data} value={v("bo_shareRegFile")} onChange={val => set("bo_shareRegFile", val)} />
         </Field>
       </>
     );
