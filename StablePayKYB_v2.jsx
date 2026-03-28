@@ -1559,7 +1559,6 @@ export default function App() {
   const [loadingApp, setLoadingApp] = useState(true);
   const [linkCopied, setLinkCopied] = useState(false);
   const contentRef = useRef();
-  const saveTimerRef = useRef(null);
 
   // Parse app ID from URL hash: #app/UUID
   useEffect(() => {
@@ -1587,25 +1586,32 @@ export default function App() {
   }, []);
 
   // Auto-save draft when data changes (debounced)
+  const dataRef = useRef(data);
+  const dirtyRef = useRef(false);
+
   const set = useCallback((k, v) => {
     setData(d => {
       const next = { ...d, [k]: v };
+      dataRef.current = next;
+      dirtyRef.current = true;
       return next;
     });
   }, []);
 
+  // Auto-save on interval instead of on every data change
   useEffect(() => {
     if (!appId || submitted) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
+    const interval = setInterval(async () => {
+      if (!dirtyRef.current) return;
+      dirtyRef.current = false;
       try {
         setSaving(true);
-        await apiSaveDraft(appId, data);
+        await apiSaveDraft(appId, dataRef.current);
         setLastSaved(new Date());
       } catch {} finally { setSaving(false); }
-    }, 2000);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [data, appId, submitted]);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [appId, submitted]);
 
   const goTo = (s) => { setStep(s); contentRef.current?.scrollTo({ top: 0, behavior: "smooth" }); };
 
@@ -1694,8 +1700,8 @@ export default function App() {
             <p style={{ fontSize: 12.5, color: T.txt3, marginBottom: 10 }}>Already have a link? Paste it in your browser to resume your application.</p>
           </div>
 
-          <p style={{ fontSize: 11, color: T.txt3, marginTop: 20 }}>
-            Regulated under PMLA, 2002 and RBI KYC Master Directions
+          <p style={{ fontSize: 11.5, color: T.txt3, marginTop: 24 }}>
+            For any help, contact <a href="mailto:compliance@stablepay.global" style={{ color: T.blueL, textDecoration: "none" }}>compliance@stablepay.global</a>
           </p>
         </div>
       </div>
