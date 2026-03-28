@@ -255,32 +255,58 @@ function FileUpload({ value, onChange, hint }) {
 
 
 /* ─────────────────────────────────────────────
-   FACE LIVENESS VERIFICATION
-   Uses MediaPipe Face Detection for challenge-response
+   REAL-TIME FACE LIVENESS VERIFICATION
+   MediaPipe FaceLandmarker — automatic detection
+   of head pose, gaze direction, and blink
 ───────────────────────────────────────────── */
-const CHALLENGES = [
-  "Look straight at the camera",
-  "Slowly turn your head to the LEFT",
-  "Slowly turn your head to the RIGHT",
-  "Blink twice slowly",
+const LIVENESS_CHALLENGES = [
+  { id: "center",  label: "Position your face in the oval",   icon: "🎯", detect: (l) => l.faceInOval },
+  { id: "left",    label: "Turn your head to the LEFT",       icon: "👈", detect: (l) => l.yaw > 25 },
+  { id: "right",   label: "Turn your head to the RIGHT",      icon: "👉", detect: (l) => l.yaw < -25 },
+  { id: "blink",   label: "Blink your eyes",                  icon: "😌", detect: (l) => l.blink },
 ];
+
+function getFaceLandmarks(landmarks) {
+  if (!landmarks || !landmarks.length) return null;
+  const lm = landmarks[0];
+  const nose = lm[1], leftEar = lm[234], rightEar = lm[454];
+  const leftEyeTop = lm[159], leftEyeBot = lm[145], rightEyeTop = lm[386], rightEyeBot = lm[374];
+  const chin = lm[152], forehead = lm[10];
+
+  const faceW = Math.abs(rightEar.x - leftEar.x);
+  const faceH = Math.abs(chin.y - forehead.y);
+  const centerX = (leftEar.x + rightEar.x) / 2;
+  const centerY = (forehead.y + chin.y) / 2;
+  const faceInOval = centerX > 0.3 && centerX < 0.7 && centerY > 0.25 && centerY < 0.75 && faceW > 0.15 && faceH > 0.2;
+
+  const noseRelX = (nose.x - leftEar.x) / faceW;
+  const yaw = (0.5 - noseRelX) * 90;
+
+  const leftEAR = Math.abs(leftEyeTop.y - leftEyeBot.y) / faceW;
+  const rightEAR = Math.abs(rightEyeTop.y - rightEyeBot.y) / faceW;
+  const avgEAR = (leftEAR + rightEAR) / 2;
+  const blink = avgEAR < 0.025;
+
+  return { faceInOval, yaw, blink, avgEAR, centerX, centerY, faceW, faceH };
+}
 
 function FaceLiveness({ value, onChange }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const overlayRef = useRef(null);
   const streamRef = useRef(null);
+  const landmarkerRef = useRef(null);
+  const rafRef = useRef(null);
+  const holdTimerRef = useRef(null);
+
   const [active, setActive] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(0);
   const [captures, setCaptures] = useState([]);
-  const [countdown, setCountdown] = useState(0);
-
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    setActive(false);
-  }, []);
+  const [feedback, setFeedback] = useState("");
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [holdProgress, setHoldProgress] = useState(0);
+  const [error, setError] = useState("");
 
   const captureFrame = useCallback(() => {
     const video = videoRef.current;
@@ -289,134 +315,269 @@ function FaceLiveness({ value, onChange }) {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext("2d").drawImage(video, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.8);
+    return canvas.toDataURL("image/jpeg", 0.85);
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+    if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
+    if (landmarkerRef.current) { landmarkerRef.current.close(); landmarkerRef.current = null; }
+    setActive(false);
+    setLoading(false);
+  }, []);
+
+  const drawOvalGuide = useCallback((ctx, w, h, detected) => {
+    ctx.clearRect(0, 0, w, h);
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    const cx = w / 2, cy = h * 0.44, rx = w * 0.28, ry = h * 0.38;
+    ctx.beginPath();
+    ctx.rect(0, 0, w, h);
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2, true);
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = detected ? T.green : "rgba(255,255,255,0.4)";
+    ctx.lineWidth = detected ? 3 : 2;
+    if (detected) { ctx.shadowColor = T.green; ctx.shadowBlur = 12; }
+    ctx.stroke();
+    ctx.restore();
   }, []);
 
   const startLiveness = useCallback(async () => {
+    setError("");
+    setLoading(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 640, height: 480 } });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
+      });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
+      const video = videoRef.current;
+      video.srcObject = stream;
+      await video.play();
+
+      const vision = await import("@mediapipe/tasks-vision");
+      const { FaceLandmarker, FilesetResolver } = vision;
+      const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
+      const faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
+        runningMode: "VIDEO",
+        numFaces: 1,
+        outputFaceBlendshapes: false,
+        outputFacialTransformationMatrixes: false,
+      });
+      landmarkerRef.current = faceLandmarker;
+
       setActive(true);
+      setLoading(false);
       setStep(0);
       setCaptures([]);
-    } catch {
-      alert("Camera access is required for liveness verification. Please allow camera access and try again.");
-    }
-  }, []);
+      setHoldProgress(0);
 
-  const handleCapture = useCallback(() => {
-    const image = captureFrame();
-    if (!image) return;
-    const newCaptures = [...captures, { challenge: CHALLENGES[step], image, timestamp: new Date().toISOString() }];
-    setCaptures(newCaptures);
-    if (step + 1 >= CHALLENGES.length) {
-      stopCamera();
-      onChange({
-        verified: true,
-        challengeCount: CHALLENGES.length,
-        completedAt: new Date().toISOString(),
-        captures: newCaptures,
-      });
-    } else {
-      setStep(step + 1);
-      setCountdown(3);
-    }
-  }, [captures, step, captureFrame, stopCamera, onChange]);
+      let currentStep = 0, holdStart = 0, completed = [], lastTime = 0;
 
-  useEffect(() => {
-    if (countdown > 0) {
-      const t = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(t);
+      const detect = () => {
+        if (!videoRef.current || !landmarkerRef.current || videoRef.current.paused) return;
+        const now = performance.now();
+        if (now - lastTime < 66) { rafRef.current = requestAnimationFrame(detect); return; }
+        lastTime = now;
+
+        const result = landmarkerRef.current.detectForVideo(videoRef.current, now);
+        const overlay = overlayRef.current;
+        if (overlay) {
+          const ctx = overlay.getContext("2d");
+          overlay.width = videoRef.current.videoWidth;
+          overlay.height = videoRef.current.videoHeight;
+          const hasFace = result.faceLandmarks && result.faceLandmarks.length > 0;
+          setFaceDetected(hasFace);
+          drawOvalGuide(ctx, overlay.width, overlay.height, hasFace);
+        }
+
+        if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+          const metrics = getFaceLandmarks(result.faceLandmarks);
+          if (!metrics) { setFeedback("Processing..."); rafRef.current = requestAnimationFrame(detect); return; }
+
+          const challenge = LIVENESS_CHALLENGES[currentStep];
+          const pass = challenge.detect(metrics);
+
+          if (pass) {
+            if (!holdStart) holdStart = now;
+            const held = now - holdStart;
+            const required = challenge.id === "blink" ? 200 : 800;
+            setHoldProgress(Math.min(100, (held / required) * 100));
+
+            if (held >= required) {
+              const canvas = canvasRef.current;
+              canvas.width = videoRef.current.videoWidth;
+              canvas.height = videoRef.current.videoHeight;
+              canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
+              const image = canvas.toDataURL("image/jpeg", 0.85);
+              completed.push({ challenge: challenge.label, image, timestamp: new Date().toISOString() });
+              setCaptures([...completed]);
+              currentStep++;
+              holdStart = 0;
+              setHoldProgress(0);
+
+              if (currentStep >= LIVENESS_CHALLENGES.length) {
+                const result = { verified: true, challengeCount: LIVENESS_CHALLENGES.length, completedAt: new Date().toISOString(), captures: completed };
+                stopCamera();
+                onChange(result);
+                return;
+              }
+              setStep(currentStep);
+              setFeedback("Great! Next challenge...");
+            } else {
+              setFeedback("Hold steady...");
+            }
+          } else {
+            holdStart = 0;
+            setHoldProgress(0);
+            if (!metrics.faceInOval && challenge.id === "center") setFeedback("Move your face into the oval");
+            else if (challenge.id === "left" && metrics.yaw < 15) setFeedback("Turn more to your LEFT");
+            else if (challenge.id === "right" && metrics.yaw > -15) setFeedback("Turn more to your RIGHT");
+            else if (challenge.id === "blink") setFeedback("Blink your eyes now");
+            else setFeedback(challenge.label);
+          }
+        } else {
+          setFeedback("No face detected — look at the camera");
+          setHoldProgress(0);
+        }
+        rafRef.current = requestAnimationFrame(detect);
+      };
+      rafRef.current = requestAnimationFrame(detect);
+    } catch (e) {
+      setLoading(false);
+      setError(e.name === "NotAllowedError" ? "Camera access denied. Please allow camera access in your browser settings." : "Failed to start liveness check. Ensure camera access is allowed.");
     }
-  }, [countdown]);
+  }, [stopCamera, onChange, captureFrame, drawOvalGuide]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
   if (value?.verified) {
     return (
-      <div style={{ border: `1px solid ${T.green}44`, borderRadius: 10, padding: 14, background: T.greenG }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-          <span style={{ fontSize: 16 }}>✅</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Liveness Verified</span>
-          <span style={{ fontSize: 11, color: T.txt3, marginLeft: "auto" }}>{new Date(value.completedAt).toLocaleString()}</span>
+      <div style={{ border: `1px solid ${T.green}44`, borderRadius: 12, padding: 16, background: T.greenG }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.green, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Liveness Verified</div>
+            <div style={{ fontSize: 11, color: T.txt3 }}>{value.challengeCount} challenges completed · {new Date(value.completedAt).toLocaleString()}</div>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {value.captures.map((c, i) => (
-            <div key={i} style={{ width: 56, height: 56, borderRadius: 6, overflow: "hidden", border: `1px solid ${T.bdr}` }}>
-              <img src={c.image} alt={c.challenge} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <div key={i} style={{ textAlign: "center" }}>
+              <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: `2px solid ${T.green}44` }}>
+                <img src={c.image} alt={c.challenge} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              </div>
+              <div style={{ fontSize: 9, color: T.txt3, marginTop: 3, maxWidth: 64 }}>{c.challenge.replace("your head to the ", "")}</div>
             </div>
           ))}
         </div>
-        <button onClick={() => { onChange(null); }} style={{ marginTop: 8, fontSize: 11, color: T.txt3, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>Redo verification</button>
+        <button onClick={() => onChange(null)} style={{ marginTop: 10, fontSize: 11, color: T.txt3, background: "none", border: `1px solid ${T.bdr}`, borderRadius: 6, padding: "4px 12px", cursor: "pointer" }}>Redo verification</button>
       </div>
     );
   }
 
-  if (!active) {
+  if (!active && !loading) {
     return (
-      <div
-        onClick={startLiveness}
-        style={{
-          border: `1.5px dashed ${T.bdrA}`, borderRadius: 8, padding: "20px", cursor: "pointer",
-          textAlign: "center", background: T.bg2, transition: "all .2s",
-        }}
-      >
-        <div style={{ fontSize: 24, marginBottom: 6 }}>📷</div>
-        <div style={{ fontSize: 13, color: T.txt2, fontWeight: 500 }}>Start Face Liveness Verification</div>
-        <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 4 }}>Camera access required — 4 quick challenges</div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ border: `1px solid ${T.bdrFocus}`, borderRadius: 10, padding: 16, background: T.bg1 }}>
-      <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", marginBottom: 12, background: "#000" }}>
-        <video ref={videoRef} style={{ width: "100%", display: "block", transform: "scaleX(-1)" }} playsInline muted />
-        <canvas ref={canvasRef} style={{ display: "none" }} />
-        <div style={{
-          position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px",
-          background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", textAlign: "center" }}>
-            {CHALLENGES[step]}
+      <div>
+        <div
+          onClick={startLiveness}
+          style={{
+            border: `1.5px dashed ${T.bdrA}`, borderRadius: 12, padding: "28px 20px", cursor: "pointer",
+            textAlign: "center", background: `linear-gradient(180deg, ${T.bg2} 0%, ${T.bg1} 100%)`, transition: "all .25s",
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = T.blue; e.currentTarget.style.background = T.blueGlowS; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = T.bdrA; e.currentTarget.style.background = `linear-gradient(180deg, ${T.bg2} 0%, ${T.bg1} 100%)`; }}
+        >
+          <div style={{ width: 48, height: 48, borderRadius: "50%", background: T.blueGlow, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="9" r="4" stroke={T.blueL} strokeWidth="1.5"/><path d="M4 20C4 16.686 7.582 14 12 14s8 2.686 8 6" stroke={T.blueL} strokeWidth="1.5" strokeLinecap="round"/><rect x="1" y="1" width="22" height="22" rx="6" stroke={T.blueL} strokeWidth="1.5" strokeDasharray="3 3"/></svg>
           </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", textAlign: "center", marginTop: 2 }}>
-            Challenge {step + 1} of {CHALLENGES.length}
+          <div style={{ fontSize: 14, color: T.txt, fontWeight: 600 }}>Start Liveness Verification</div>
+          <div style={{ fontSize: 12, color: T.txt3, marginTop: 4 }}>Real-time face detection · 4 automated challenges</div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 14 }}>
+            {LIVENESS_CHALLENGES.map((c, i) => (
+              <div key={i} style={{ fontSize: 10, color: T.txt3, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 16 }}>{c.icon}</span>
+                <span>{c.label.replace("your head to the ", "").replace("Position your face in the oval", "Face center")}</span>
+              </div>
+            ))}
           </div>
         </div>
+        {error && <div style={{ fontSize: 12, color: T.red, marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}><span>⚠</span>{error}</div>}
       </div>
-      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-        <button
-          onClick={handleCapture}
-          disabled={countdown > 0}
-          style={{
-            padding: "8px 24px", borderRadius: 8, border: "none", cursor: countdown > 0 ? "default" : "pointer",
-            background: countdown > 0 ? T.bg3 : T.grad, color: "#fff", fontSize: 13, fontWeight: 600,
-          }}
-        >
-          {countdown > 0 ? `Wait ${countdown}s...` : "Capture"}
-        </button>
-        <button
-          onClick={stopCamera}
-          style={{
-            padding: "8px 16px", borderRadius: 8, border: `1px solid ${T.bdrA}`,
-            background: T.bg3, color: T.txt3, fontSize: 12, cursor: "pointer",
-          }}
-        >
-          Cancel
-        </button>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ border: `1px solid ${T.bdrFocus}`, borderRadius: 12, padding: "40px 20px", textAlign: "center", background: T.bg1 }}>
+        <div style={{ width: 32, height: 32, border: `3px solid ${T.bdr}`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+        <div style={{ fontSize: 13, color: T.txt2, fontWeight: 500 }}>Initialising face detection...</div>
+        <div style={{ fontSize: 11, color: T.txt3, marginTop: 4 }}>Loading MediaPipe model</div>
       </div>
-      <div style={{ display: "flex", gap: 4, justifyContent: "center", marginTop: 10 }}>
-        {CHALLENGES.map((_, i) => (
-          <div key={i} style={{
-            width: 8, height: 8, borderRadius: "50%",
-            background: i < step ? T.green : i === step ? T.blue : T.bg3,
-          }} />
-        ))}
+    );
+  }
+
+  const challenge = LIVENESS_CHALLENGES[step];
+
+  return (
+    <div style={{ border: `1px solid ${T.bdrFocus}`, borderRadius: 12, overflow: "hidden", background: T.bg1 }}>
+      <div style={{ position: "relative", background: "#000", aspectRatio: "4/3" }}>
+        <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transform: "scaleX(-1)" }} playsInline muted />
+        <canvas ref={overlayRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", transform: "scaleX(-1)" }} />
+        <canvas ref={canvasRef} style={{ display: "none" }} />
+
+        {/* Top status bar */}
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "12px 16px", background: "linear-gradient(rgba(0,0,0,0.7), transparent)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {LIVENESS_CHALLENGES.map((_, i) => (
+              <div key={i} style={{ width: 24, height: 4, borderRadius: 2, background: i < step ? T.green : i === step ? T.blue : "rgba(255,255,255,0.2)", transition: "all .3s" }} />
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontFamily: "'IBM Plex Mono', monospace" }}>{step + 1}/{LIVENESS_CHALLENGES.length}</div>
+        </div>
+
+        {/* Bottom instruction */}
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "20px 16px 16px", background: "linear-gradient(transparent, rgba(0,0,0,0.85))" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 20 }}>{challenge.icon}</span>
+            <span style={{ fontSize: 15, fontWeight: 600, color: "#fff" }}>{challenge.label}</span>
+          </div>
+          <div style={{ fontSize: 12, color: faceDetected ? "rgba(255,255,255,0.7)" : T.red, textAlign: "center" }}>
+            {feedback || (faceDetected ? "Detecting..." : "No face detected")}
+          </div>
+          {/* Hold progress bar */}
+          {holdProgress > 0 && (
+            <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", marginTop: 8, overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 2, background: T.green, width: `${holdProgress}%`, transition: "width 0.1s linear" }} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Completed captures strip */}
+      {captures.length > 0 && (
+        <div style={{ display: "flex", gap: 6, padding: "10px 16px", background: T.bg2, borderTop: `1px solid ${T.bdr}` }}>
+          {captures.map((c, i) => (
+            <div key={i} style={{ width: 40, height: 40, borderRadius: 6, overflow: "hidden", border: `2px solid ${T.green}66`, flexShrink: 0 }}>
+              <img src={c.image} alt={c.challenge} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+          ))}
+          <div style={{ display: "flex", alignItems: "center", marginLeft: "auto" }}>
+            <span style={{ fontSize: 11, color: T.green }}>{captures.length} done</span>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel button */}
+      <div style={{ padding: "10px 16px", borderTop: `1px solid ${T.bdr}`, textAlign: "center" }}>
+        <button onClick={stopCamera} style={{ fontSize: 12, color: T.txt3, background: "none", border: "none", cursor: "pointer" }}>Cancel verification</button>
       </div>
     </div>
   );
