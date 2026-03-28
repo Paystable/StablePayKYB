@@ -95,11 +95,14 @@ function Field({ label, required, hint, error, children, half }) {
 }
 
 function Input({ value, onChange, placeholder, type = "text", monospace }) {
+  const ref = useRef(null);
   const [f, setF] = useState(false);
+  useEffect(() => { if (ref.current && ref.current !== document.activeElement) ref.current.value = value || ""; }, [value]);
   return (
     <input
+      ref={ref}
       type={type}
-      value={value || ""}
+      defaultValue={value || ""}
       onChange={e => onChange?.(e.target.value)}
       placeholder={placeholder}
       className="sp-input"
@@ -115,10 +118,13 @@ function Input({ value, onChange, placeholder, type = "text", monospace }) {
 }
 
 function Textarea({ value, onChange, placeholder, rows = 3, monospace }) {
+  const ref = useRef(null);
   const [f, setF] = useState(false);
+  useEffect(() => { if (ref.current && ref.current !== document.activeElement) ref.current.value = value || ""; }, [value]);
   return (
     <textarea
-      value={value || ""}
+      ref={ref}
+      defaultValue={value || ""}
       onChange={e => onChange?.(e.target.value)}
       placeholder={placeholder}
       rows={rows}
@@ -1583,7 +1589,19 @@ export default function App() {
     }
   }, []);
 
-  const set = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
+  const setTimers = useRef({});
+  const set = useCallback((k, v) => {
+    // Debounce text inputs, immediate for everything else
+    if (typeof v === "string" && !v.includes("\n")) {
+      if (setTimers.current[k]) clearTimeout(setTimers.current[k]);
+      setTimers.current[k] = setTimeout(() => {
+        setData(d => ({ ...d, [k]: v }));
+        delete setTimers.current[k];
+      }, 300);
+    } else {
+      setData(d => ({ ...d, [k]: v }));
+    }
+  }, []);
 
   const goTo = (s) => { setStep(s); contentRef.current?.scrollTo({ top: 0, behavior: "smooth" }); };
 
