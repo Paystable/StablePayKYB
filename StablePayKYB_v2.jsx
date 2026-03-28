@@ -1054,6 +1054,447 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
 }
 
 /* ─────────────────────────────────────────────
+   DOCUMENT BUILDER — Board Resolution Generator
+   DocuSign-style template with signature pad
+───────────────────────────────────────────── */
+function DocumentBuilder({ data, value, onChange }) {
+  const [mode, setMode] = useState(value?.completed ? "completed" : "builder");
+  const [signatories, setSignatories] = useState(value?.signatories || [
+    { name: "", designation: "", email: "" },
+    { name: "", designation: "", email: "" },
+    { name: "", designation: "", email: "" },
+  ]);
+  const [signerName, setSignerName] = useState(value?.signerName || "");
+  const [signerTitle, setSignerTitle] = useState(value?.signerTitle || "");
+  const [place, setPlace] = useState(value?.place || "");
+  const [docDate, setDocDate] = useState(value?.date || new Date().toISOString().split("T")[0]);
+  const [signatureImage, setSignatureImage] = useState(value?.signatureImage || null);
+  const [showUploadFallback, setShowUploadFallback] = useState(false);
+
+  const canvasRef = useRef(null);
+  const isDrawing = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 });
+  const fileRef = useRef(null);
+
+  const companyName = data?.co_name || "COMPANY NAME";
+  const crn = data?.co_crn || "";
+  const regAddr = data?.co_regAddr || "";
+  const formattedDate = docDate ? new Date(docDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
+
+  /* ── Signature Canvas ── */
+  const initCanvas = useCallback((canvas) => {
+    if (!canvas) return;
+    canvasRef.current = canvas;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 2;
+    if (signatureImage) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      img.src = signatureImage;
+    }
+  }, []);
+
+  const getPos = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+
+  const startDraw = (e) => {
+    e.preventDefault();
+    isDrawing.current = true;
+    lastPos.current = getPos(e);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastPos.current = pos;
+  };
+
+  const endDraw = () => {
+    if (!isDrawing.current) return;
+    isDrawing.current = false;
+    if (canvasRef.current) {
+      setSignatureImage(canvasRef.current.toDataURL("image/png"));
+    }
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+    setSignatureImage(null);
+  };
+
+  /* ── Save / Complete ── */
+  const saveDocument = () => {
+    const doc = {
+      type: "generated",
+      signatories: signatories.filter(s => s.name.trim()),
+      signatureImage,
+      signerName,
+      signerTitle,
+      place,
+      date: docDate,
+      companyName,
+      crn,
+      regAddr,
+      completed: true,
+    };
+    onChange?.(doc);
+    setMode("completed");
+  };
+
+  /* ── Generate HTML for PDF ── */
+  const generateDocHTML = () => {
+    const sigRows = signatories.filter(s => s.name.trim()).map(s =>
+      `<tr><td style="padding:8px 12px;border:1px solid #ccc;">${s.name}</td><td style="padding:8px 12px;border:1px solid #ccc;">${s.designation}</td><td style="padding:8px 12px;border:1px solid #ccc;">${s.email}</td></tr>`
+    ).join("");
+    return `<!DOCTYPE html><html><head><title>Board Resolution - ${companyName}</title><style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:'Inter',sans-serif;color:#1a1a1a;padding:48px 56px;line-height:1.7;font-size:13px;max-width:800px;margin:0 auto}
+      h1{font-size:15px;letter-spacing:3px;margin:24px 0 8px;text-align:center}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+      .co-name{font-size:18px;font-weight:700;letter-spacing:1px}
+      .co-detail{font-size:11px;color:#555;margin-top:2px;line-height:1.5}
+      .logo-placeholder{width:80px;height:80px;border:1.5px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center}
+      hr{border:none;border-top:1.5px solid #ccc;margin:16px 0}
+      table{width:100%;border-collapse:collapse;margin:16px 0}
+      th{background:#f5f5f5;padding:8px 12px;border:1px solid #ccc;font-size:11px;text-transform:uppercase;letter-spacing:1px;text-align:left}
+      .sig-area{margin-top:32px}
+      .sig-img{height:60px;margin:8px 0}
+      .sig-line{border-bottom:1px solid #1a1a1a;display:inline-block;min-width:200px;margin-bottom:4px}
+      .field-row{margin:4px 0;font-size:13px}
+      .field-label{color:#555;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
+      @media print{body{padding:32px 40px}@page{margin:20mm}}
+    </style></head><body>
+      <div class="header">
+        <div>
+          <div class="co-name">${companyName}</div>
+          ${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}
+          ${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}
+        </div>
+        <div class="logo-placeholder">Company<br/>Logo</div>
+      </div>
+      <hr/>
+      <h1>BOARD RESOLUTION</h1>
+      <p style="text-align:center;color:#555;font-size:12px;margin-bottom:20px">Date: ${formattedDate}</p>
+      <p style="margin-bottom:12px"><strong>RESOLUTION OF THE BOARD OF DIRECTORS OF ${companyName.toUpperCase()}</strong></p>
+      <p style="margin-bottom:12px">(passed by circulation / at a meeting held on ${formattedDate})</p>
+      <p style="margin-bottom:16px">RESOLVED THAT the following persons are hereby authorised to act as authorised signatories for the purpose of onboarding with StablePay (a product of Fincrypt LLP) for OTC stablecoin-to-INR transactions:</p>
+      <table><thead><tr><th>Name</th><th>Designation</th><th>Email</th></tr></thead><tbody>${sigRows}</tbody></table>
+      <p style="margin:16px 0">FURTHER RESOLVED THAT the above-named persons are authorised, jointly or severally, to execute any documents, agreements, or undertakings required for the completion of the KYB onboarding process.</p>
+      <div class="sig-area">
+        <p style="margin-bottom:16px">For and on behalf of <strong>${companyName.toUpperCase()}</strong></p>
+        <p class="field-label">Authorised Signatory:</p>
+        ${signatureImage ? `<img class="sig-img" src="${signatureImage}" alt="Signature"/>` : `<div class="sig-line"></div>`}
+        <div class="field-row">Name: <strong>${signerName}</strong></div>
+        <div class="field-row">Designation: <strong>${signerTitle}</strong></div>
+        <div class="field-row">Date: ${formattedDate}</div>
+        <div class="field-row">Place: ${place}</div>
+      </div>
+    </body></html>`;
+  };
+
+  const downloadPDF = () => {
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(generateDocHTML());
+    printWindow.document.close();
+    printWindow.onload = () => { printWindow.print(); };
+  };
+
+  /* ── Document input field style (inline, underlined) ── */
+  const docInput = (val, onBlur, placeholder, style = {}) => (
+    <input
+      defaultValue={val}
+      placeholder={placeholder}
+      onBlur={e => onBlur(e.target.value)}
+      style={{
+        border: "none", borderBottom: "1px dashed #bbb", background: "transparent",
+        color: "#1a1a1a", fontSize: 13, fontFamily: "'Inter', sans-serif",
+        padding: "2px 4px", outline: "none", width: "100%", ...style,
+      }}
+    />
+  );
+
+  /* ── Completed Mode ── */
+  if (mode === "completed" && value?.completed) {
+    return (
+      <div style={{ border: `1.5px solid ${T.bdr}`, borderRadius: 12, overflow: "hidden", background: T.bg1 }}>
+        {/* Thumbnail preview */}
+        <div style={{
+          background: "#FAFAFA", padding: "24px 28px", borderBottom: `1px solid ${T.bdr}`,
+          position: "relative", minHeight: 120,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1, marginBottom: 4 }}>{companyName}</div>
+          {crn && <div style={{ fontSize: 10, color: "#666", marginBottom: 2 }}>CRN: {crn}</div>}
+          <div style={{ borderTop: "1px solid #ddd", margin: "8px 0" }} />
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#1a1a1a", letterSpacing: 2, textTransform: "uppercase", textAlign: "center" }}>Board Resolution</div>
+          <div style={{ fontSize: 10, color: "#666", textAlign: "center", marginTop: 2 }}>{formattedDate}</div>
+          {signatureImage && <img src={signatureImage} alt="Signature" style={{ height: 30, marginTop: 8, opacity: 0.7 }} />}
+          {/* Completed badge */}
+          <div style={{
+            position: "absolute", top: 12, right: 12, background: T.greenG, border: `1px solid ${T.green}`,
+            borderRadius: 6, padding: "3px 10px", fontSize: 10, fontWeight: 600, color: T.green, letterSpacing: 0.5,
+          }}>Completed</div>
+        </div>
+        {/* Actions */}
+        <div style={{ display: "flex", gap: 8, padding: "12px 16px" }}>
+          <button onClick={() => setMode("builder")} style={{
+            flex: 1, padding: "8px 16px", border: `1px solid ${T.bdrA}`, borderRadius: 8,
+            background: T.bg2, color: T.txt2, fontSize: 12, fontWeight: 500, cursor: "pointer",
+            fontFamily: "'Inter', sans-serif",
+          }}>Edit</button>
+          <button onClick={downloadPDF} style={{
+            flex: 1, padding: "8px 16px", border: "none", borderRadius: 8,
+            background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+            fontFamily: "'Inter', sans-serif",
+          }}>Download PDF</button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Builder Mode ── */
+  return (
+    <div style={{ borderRadius: 12, overflow: "hidden", border: `1.5px solid ${T.bdr}`, background: T.bg1 }}>
+      {/* Mode tabs */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 16px", borderBottom: `1px solid ${T.bdr}`, background: T.bg0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M3 1H10L13 4V14C13 14.55 12.55 15 12 15H4C3.45 15 3 14.55 3 14V2C3 1.45 3.45 1 4 1Z" stroke={T.blue} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 1V4H13" stroke={T.blue} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M6 8H10M6 11H10M6 5H7" stroke={T.blue} strokeWidth="1" strokeLinecap="round"/>
+          </svg>
+          <span style={{ fontSize: 12, fontWeight: 600, color: T.txt, letterSpacing: 0.3 }}>Board Resolution Builder</span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {!showUploadFallback && (
+            <button onClick={() => setShowUploadFallback(true)} style={{
+              padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6,
+              background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer",
+              fontFamily: "'Inter', sans-serif",
+            }}>Upload my own instead</button>
+          )}
+        </div>
+      </div>
+
+      {showUploadFallback ? (
+        <div style={{ padding: 16 }}>
+          <FileUpload value={typeof value === "object" && value?.type !== "generated" ? value : null} onChange={val => { onChange?.(val); }} hint="PDF only — company letterhead, signed" />
+          <button onClick={() => setShowUploadFallback(false)} style={{
+            marginTop: 8, padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6,
+            background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer",
+            fontFamily: "'Inter', sans-serif",
+          }}>Use template builder instead</button>
+        </div>
+      ) : (
+        <>
+          {/* Document Paper */}
+          <div style={{
+            margin: 16, borderRadius: 8, background: "#FAFAFA", border: "1px solid #e0e0e0",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)",
+            padding: "36px 40px", fontFamily: "'Inter', sans-serif", color: "#1a1a1a", lineHeight: 1.7,
+          }}>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1 }}>{companyName}</div>
+                {crn && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CRN: {crn}</div>}
+                {regAddr && <div style={{ fontSize: 11, color: "#666", marginTop: 2, maxWidth: 360, lineHeight: 1.4 }}>{regAddr}</div>}
+              </div>
+              <div style={{
+                width: 72, height: 72, border: "1.5px dashed #ccc", borderRadius: 8,
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                color: "#aaa", fontSize: 9, textAlign: "center", lineHeight: 1.3,
+              }}>Company<br/>Logo</div>
+            </div>
+
+            {/* Divider */}
+            <div style={{ borderTop: "1.5px solid #ccc", margin: "16px 0" }} />
+
+            {/* Title */}
+            <div style={{
+              fontSize: 15, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase",
+              textAlign: "center", margin: "20px 0 8px", color: "#1a1a1a",
+            }}>Board Resolution</div>
+
+            {/* Date */}
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <span style={{ fontSize: 12, color: "#555" }}>Date: </span>
+              <input
+                type="date"
+                defaultValue={docDate}
+                onBlur={e => setDocDate(e.target.value)}
+                style={{
+                  border: "none", borderBottom: "1px dashed #bbb", background: "transparent",
+                  color: "#1a1a1a", fontSize: 12, fontFamily: "'Inter', sans-serif",
+                  padding: "2px 4px", outline: "none",
+                }}
+              />
+            </div>
+
+            {/* Resolution text */}
+            <p style={{ fontSize: 13, marginBottom: 10 }}>
+              <strong>RESOLUTION OF THE BOARD OF DIRECTORS OF {companyName.toUpperCase()}</strong>
+            </p>
+            <p style={{ fontSize: 12.5, color: "#444", marginBottom: 14 }}>
+              (passed by circulation / at a meeting held on {formattedDate})
+            </p>
+            <p style={{ fontSize: 12.5, marginBottom: 16, lineHeight: 1.7 }}>
+              RESOLVED THAT the following persons are hereby authorised to act as authorised signatories for the purpose of onboarding with StablePay (a product of Fincrypt LLP) for OTC stablecoin-to-INR transactions:
+            </p>
+
+            {/* Signatories Table */}
+            <table style={{ width: "100%", borderCollapse: "collapse", margin: "12px 0 16px", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#f0f0f0" }}>
+                  <th style={{ padding: "8px 10px", border: "1px solid #ccc", textAlign: "left", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, color: "#555" }}>Name</th>
+                  <th style={{ padding: "8px 10px", border: "1px solid #ccc", textAlign: "left", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, color: "#555" }}>Designation</th>
+                  <th style={{ padding: "8px 10px", border: "1px solid #ccc", textAlign: "left", fontSize: 10.5, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, color: "#555" }}>Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signatories.map((s, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: "4px 6px", border: "1px solid #ccc" }}>
+                      {docInput(s.name, v => { const u = [...signatories]; u[i] = { ...u[i], name: v }; setSignatories(u); }, "Full name")}
+                    </td>
+                    <td style={{ padding: "4px 6px", border: "1px solid #ccc" }}>
+                      {docInput(s.designation, v => { const u = [...signatories]; u[i] = { ...u[i], designation: v }; setSignatories(u); }, "Title / role")}
+                    </td>
+                    <td style={{ padding: "4px 6px", border: "1px solid #ccc" }}>
+                      {docInput(s.email, v => { const u = [...signatories]; u[i] = { ...u[i], email: v }; setSignatories(u); }, "email@company.com")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Add / Remove signatory */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button onClick={() => setSignatories([...signatories, { name: "", designation: "", email: "" }])} style={{
+                border: "1px dashed #bbb", borderRadius: 6, background: "transparent",
+                padding: "4px 12px", fontSize: 11, color: "#777", cursor: "pointer",
+                fontFamily: "'Inter', sans-serif",
+              }}>+ Add row</button>
+              {signatories.length > 1 && (
+                <button onClick={() => setSignatories(signatories.slice(0, -1))} style={{
+                  border: "1px dashed #bbb", borderRadius: 6, background: "transparent",
+                  padding: "4px 12px", fontSize: 11, color: "#999", cursor: "pointer",
+                  fontFamily: "'Inter', sans-serif",
+                }}>Remove last</button>
+              )}
+            </div>
+
+            {/* Further resolved */}
+            <p style={{ fontSize: 12.5, marginBottom: 24, lineHeight: 1.7 }}>
+              FURTHER RESOLVED THAT the above-named persons are authorised, jointly or severally, to execute any documents, agreements, or undertakings required for the completion of the KYB onboarding process.
+            </p>
+
+            {/* Signature Block */}
+            <div style={{ marginTop: 24 }}>
+              <p style={{ fontSize: 13, marginBottom: 16 }}>For and on behalf of <strong>{companyName.toUpperCase()}</strong></p>
+
+              {/* Signature Pad */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10.5, color: "#555", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Authorised Signatory:</div>
+                <div style={{ position: "relative", border: "1px dashed #bbb", borderRadius: 6, background: "#fff" }}>
+                  <canvas
+                    ref={initCanvas}
+                    style={{ width: "100%", height: 80, cursor: "crosshair", display: "block", touchAction: "none" }}
+                    onMouseDown={startDraw}
+                    onMouseMove={draw}
+                    onMouseUp={endDraw}
+                    onMouseLeave={endDraw}
+                    onTouchStart={startDraw}
+                    onTouchMove={draw}
+                    onTouchEnd={endDraw}
+                  />
+                  <button onClick={clearSignature} style={{
+                    position: "absolute", top: 4, right: 4, border: "1px solid #ddd", borderRadius: 4,
+                    background: "#fff", padding: "2px 8px", fontSize: 10, color: "#999", cursor: "pointer",
+                    fontFamily: "'Inter', sans-serif",
+                  }}>Clear</button>
+                  {!signatureImage && (
+                    <div style={{
+                      position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+                      fontSize: 11, color: "#ccc", pointerEvents: "none", whiteSpace: "nowrap",
+                    }}>Draw your signature here</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Signer details */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 20px", marginTop: 12 }}>
+                <div>
+                  <span style={{ fontSize: 11, color: "#555" }}>Name: </span>
+                  {docInput(signerName, v => setSignerName(v), "Signatory full name")}
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: "#555" }}>Designation: </span>
+                  {docInput(signerTitle, v => setSignerTitle(v), "Director / CEO / etc.")}
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: "#555" }}>Date: </span>
+                  <span style={{ fontSize: 12.5, color: "#1a1a1a" }}>{formattedDate}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: "#555" }}>Place: </span>
+                  {docInput(place, v => setPlace(v), "City, Country")}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{
+            display: "flex", gap: 8, padding: "12px 16px", borderTop: `1px solid ${T.bdr}`,
+            justifyContent: "flex-end",
+          }}>
+            <button onClick={downloadPDF} style={{
+              padding: "8px 20px", border: `1px solid ${T.bdrA}`, borderRadius: 8,
+              background: T.bg2, color: T.txt2, fontSize: 12, fontWeight: 500, cursor: "pointer",
+              fontFamily: "'Inter', sans-serif",
+            }}>Preview / Download PDF</button>
+            <button onClick={saveDocument} style={{
+              padding: "8px 24px", border: "none", borderRadius: 8,
+              background: T.grad, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              fontFamily: "'Inter', sans-serif",
+            }}>Save Document</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
    FORM STEPS
 ───────────────────────────────────────────── */
 const COUNTRIES = ["India","United States","United Kingdom","Singapore","United Arab Emirates","Hong Kong SAR","Mauritius","Cayman Islands","British Virgin Islands","Germany","Netherlands","Switzerland","Canada","Australia","Japan","Other"];
@@ -1293,8 +1734,8 @@ function renderStep(step, data, set) {
         <Field label="Authorised Signatory Name(s) & Positions" required hint="Persons legally authorised to execute contracts and agreements on behalf of the entity">
           <Textarea value={v("bo_signatories")} onChange={val => set("bo_signatories", val)} placeholder="Full name — Position — Email address (one per line)" rows={3} />
         </Field>
-        <Field label="Upload Board Resolution / Authorisation Letter" hint="On company letterhead, signed & dated, listing all directors and authorised signatories with their positions and contact details">
-          <FileUpload value={v("bo_authLetterFile")} onChange={val => set("bo_authLetterFile", val)} hint="PDF only — company letterhead, signed" />
+        <Field label="Board Resolution / Authorisation Letter" hint="Use our template to create your board resolution, or upload your own">
+          <DocumentBuilder data={data} value={v("bo_authLetterFile")} onChange={val => set("bo_authLetterFile", val)} />
         </Field>
         <Field label="Upload Corporate Structure Chart" required hint="Showing the full ownership chain from the entity to the ultimate natural beneficial owners. Clearly indicate percentage holdings at each level.">
           <FileUpload value={v("bo_structureFile")} onChange={val => set("bo_structureFile", val)} />
