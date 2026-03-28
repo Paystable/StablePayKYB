@@ -1515,24 +1515,6 @@ function renderStep(step, data, set) {
         <Field label="Additional Remarks" hint="Any other information the compliance team should be aware of">
           <Textarea value={v("decl_remarks")} onChange={val => set("decl_remarks", val)} placeholder="Optional — any additional context, ongoing regulatory engagements, or pending filings relevant to this application" rows={3} />
         </Field>
-
-        <div style={{ background: T.bg0, border: `1px solid ${T.bdrA}`, borderRadius: 12, padding: "18px 20px", marginTop: 8 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: T.txt2, letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>After Submission</div>
-          {[
-            ["📬","Acknowledgement email", "Sent immediately to your contact address"],
-            ["🔍","Compliance review", "2–5 business days. Our team may request clarifications."],
-            ["✅","Account activation", "OTC limits and wallet details issued upon approval"],
-            ["📋","Ongoing monitoring", "Periodic KYB refresh required — typically annually"],
-          ].map(([icon, title, desc]) => (
-            <div key={title} style={{ display: "flex", gap: 12, marginBottom: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.txt }}>{title}</div>
-                <div style={{ fontSize: 12, color: T.txt3 }}>{desc}</div>
-              </div>
-            </div>
-          ))}
-        </div>
       </>
     );
 
@@ -1679,7 +1661,25 @@ export default function App() {
             </button>
           ) : (
             <button
-              onClick={() => setSubmitted(true)}
+              onClick={async () => {
+                const meta = {
+                  submittedAt: new Date().toISOString(),
+                  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                  userAgent: navigator.userAgent,
+                  screenRes: `${screen.width}x${screen.height}`,
+                  language: navigator.language,
+                  platform: navigator.platform,
+                  ip: null,
+                  geo: { lat: null, lng: null, accuracy: null, capturedAt: null, error: null },
+                };
+                try { const r = await fetch("https://api.ipify.org?format=json"); const j = await r.json(); meta.ip = j.ip; } catch {}
+                try {
+                  const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: 0 }));
+                  meta.geo = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, capturedAt: new Date().toISOString() };
+                } catch (e) { meta.geo = { error: e.message || "Denied" }; }
+                set("_submissionMeta", meta);
+                setSubmitted(true);
+              }}
               className="sp-btn-primary"
               style={{
                 padding: "10px 28px", borderRadius: 8, border: "none",
