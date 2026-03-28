@@ -1523,19 +1523,187 @@ function renderStep(step, data, set) {
 }
 
 /* ─────────────────────────────────────────────
+   API HELPERS
+───────────────────────────────────────────── */
+const API = "/api";
+
+async function apiCreateApp(formData = {}) {
+  const r = await fetch(`${API}/applications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ formData }) });
+  if (!r.ok) throw new Error("Failed to create application");
+  return r.json();
+}
+
+async function apiSaveDraft(id, formData) {
+  const r = await fetch(`${API}/applications/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ formData }) });
+  if (!r.ok) throw new Error("Failed to save draft");
+  return r.json();
+}
+
+async function apiSubmitApp(id, submissionMeta) {
+  const r = await fetch(`${API}/applications/${id}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ submissionMeta }) });
+  if (!r.ok) throw new Error("Failed to submit application");
+  return r.json();
+}
+
+/* ─────────────────────────────────────────────
    MAIN APP
 ───────────────────────────────────────────── */
 export default function App() {
+  const [appId, setAppId] = useState(null);
+  const [refCode, setRefCode] = useState("");
   const [step, setStep] = useState(0);
   const [data, setData] = useState({});
   const [submitted, setSubmitted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const [loadingApp, setLoadingApp] = useState(true);
+  const [linkCopied, setLinkCopied] = useState(false);
   const contentRef = useRef();
+  const saveTimerRef = useRef(null);
 
-  const set = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
+  // Parse app ID from URL hash: #app/UUID
+  useEffect(() => {
+    const hash = window.location.hash;
+    const match = hash.match(/#app\/([a-f0-9-]+)/i);
+    if (match) {
+      setAppId(match[1]);
+      // Load existing draft
+      fetch(`${API}/applications/${match[1]}`, { headers: { "Content-Type": "application/json" } })
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(app => {
+          setData(typeof app.form_data === "string" ? JSON.parse(app.form_data) : (app.form_data || {}));
+          setRefCode(app.ref_code || "");
+          if (app.status !== "draft") setSubmitted(true);
+          setLoadingApp(false);
+        })
+        .catch(() => {
+          // App not found — show landing
+          setAppId(null);
+          setLoadingApp(false);
+        });
+    } else {
+      setLoadingApp(false);
+    }
+  }, []);
+
+  // Auto-save draft when data changes (debounced)
+  const set = useCallback((k, v) => {
+    setData(d => {
+      const next = { ...d, [k]: v };
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!appId || submitted) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        setSaving(true);
+        await apiSaveDraft(appId, data);
+        setLastSaved(new Date());
+      } catch {} finally { setSaving(false); }
+    }, 2000);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [data, appId, submitted]);
+
   const goTo = (s) => { setStep(s); contentRef.current?.scrollTo({ top: 0, behavior: "smooth" }); };
 
+  const createNewApplication = useCallback(async () => {
+    try {
+      setLoadingApp(true);
+      const app = await apiCreateApp({});
+      setAppId(app.id);
+      setRefCode(app.ref_code);
+      window.location.hash = `app/${app.id}`;
+      setLoadingApp(false);
+    } catch {
+      setLoadingApp(false);
+      alert("Failed to create application. Please try again.");
+    }
+  }, []);
+
+  const copyLink = useCallback(() => {
+    const link = `${window.location.origin}${window.location.pathname}#app/${appId}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  }, [appId]);
+
+  // Loading state
+  if (loadingApp) {
+    return (
+      <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <style>{GLOBAL_CSS}</style>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ width: 36, height: 36, border: `3px solid ${T.bdr}`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+          <div style={{ fontSize: 14, color: T.txt2 }}>Loading application...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Landing page — no app selected
+  if (!appId && !submitted) {
+    return (
+      <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 24, position: "relative", overflow: "hidden" }}>
+        <style>{GLOBAL_CSS}</style>
+        <div className="sp-grid-bg" style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
+        <div className="sp-noise" />
+        <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.2) 0%, transparent 70%)", top: -150, right: -100, filter: "blur(80px)" }} />
+        <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.15) 0%, transparent 70%)", bottom: -100, left: -100, filter: "blur(80px)" }} />
+
+        <div className="sp-fade" style={{ maxWidth: 480, width: "100%", textAlign: "center", position: "relative", zIndex: 1 }}>
+          {/* Logo */}
+          <div style={{ marginBottom: 32 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.txt, letterSpacing: "-.03em" }}>StablePay</div>
+            <div style={{ fontSize: 12, color: T.txt3, marginTop: 4, letterSpacing: ".08em", textTransform: "uppercase" }}>OTC KYB Onboarding</div>
+          </div>
+
+          {/* Card */}
+          <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", padding: "40px 36px", backdropFilter: "blur(10px)", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.5)" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: T.blueGlow, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" stroke={T.blueL} strokeWidth="1.5" strokeLinejoin="round"/><path d="M12 12V22M12 12L3 7M12 12L21 7" stroke={T.blueL} strokeWidth="1.5"/></svg>
+            </div>
+            <h1 style={{ fontSize: 20, fontWeight: 600, color: T.txt, marginBottom: 8 }}>Know Your Business</h1>
+            <p style={{ fontSize: 13.5, color: T.txt3, lineHeight: 1.7, marginBottom: 28 }}>
+              Complete this compliance form to onboard as a StablePay OTC counterparty. Your progress is auto-saved and you will receive a unique link to resume at any time.
+            </p>
+
+            <button
+              onClick={createNewApplication}
+              className="sp-btn-primary"
+              style={{
+                width: "100%", padding: "14px", borderRadius: 10, border: "none",
+                background: T.grad, color: "#fff", fontSize: 14.5, fontWeight: 600, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                boxShadow: `0 4px 20px ${T.blueGlow}`,
+              }}
+            >
+              Start New Application
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M9 4L13 8L9 12" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "24px 0" }}>
+              <div style={{ flex: 1, height: 1, background: T.bdr }} />
+              <span style={{ fontSize: 11, color: T.txt3 }}>or</span>
+              <div style={{ flex: 1, height: 1, background: T.bdr }} />
+            </div>
+
+            <p style={{ fontSize: 12.5, color: T.txt3, marginBottom: 10 }}>Already have a link? Paste it in your browser to resume your application.</p>
+          </div>
+
+          <p style={{ fontSize: 11, color: T.txt3, marginTop: 20 }}>
+            Regulated under PMLA, 2002 and RBI KYC Master Directions
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (submitted) {
-    const ref = `SP-OTC-${Date.now().toString(36).toUpperCase().slice(-8)}`;
+    const ref = refCode || `SP-OTC-${Date.now().toString(36).toUpperCase().slice(-8)}`;
     return (
       <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 24, position: "relative", overflow: "hidden" }}>
         <style>{GLOBAL_CSS}</style>
@@ -1598,9 +1766,28 @@ export default function App() {
             <span style={{ color: T.bdrA }}>/</span>
             <span style={{ fontSize: 12.5, color: T.txt2, fontWeight: 500 }}>{STEPS[step].label}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
-            <span style={{ fontSize: 11.5, color: T.txt3 }}>Secure</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            {/* Save status */}
+            {appId && (
+              <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: saving ? T.amber : T.txt3 }}>
+                {saving ? (
+                  <><div style={{ width: 5, height: 5, borderRadius: "50%", background: T.amber, animation: "pulse 1s infinite" }} /> Saving...</>
+                ) : lastSaved ? (
+                  <><div style={{ width: 5, height: 5, borderRadius: "50%", background: T.green }} /> Saved</>
+                ) : null}
+              </div>
+            )}
+            {/* Copy link */}
+            {appId && (
+              <button onClick={copyLink} style={{ fontSize: 11, color: linkCopied ? T.green : T.blueL, background: T.bg3, border: `1px solid ${T.bdr}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" strokeWidth="1.3"/><path d="M11 5V3a2 2 0 00-2-2H3a2 2 0 00-2 2v6a2 2 0 002 2h2" stroke="currentColor" strokeWidth="1.3"/></svg>
+                {linkCopied ? "Copied!" : "Copy link"}
+              </button>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
+              <span style={{ fontSize: 11, color: T.txt3 }}>Secure</span>
+            </div>
           </div>
         </div>
 
@@ -1678,6 +1865,12 @@ export default function App() {
                   meta.geo = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, capturedAt: new Date().toISOString() };
                 } catch (e) { meta.geo = { error: e.message || "Denied" }; }
                 set("_submissionMeta", meta);
+                if (appId) {
+                  try {
+                    await apiSaveDraft(appId, { ...data, _submissionMeta: meta });
+                    await apiSubmitApp(appId, meta);
+                  } catch {}
+                }
                 setSubmitted(true);
               }}
               className="sp-btn-primary"
