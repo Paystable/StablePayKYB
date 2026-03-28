@@ -257,13 +257,22 @@ function FileUpload({ value, onChange, hint }) {
 /* ─────────────────────────────────────────────
    REAL-TIME FACE LIVENESS VERIFICATION
    MediaPipe FaceLandmarker — automatic detection
-   of head pose, gaze direction, and blink
+   Sumsub-style oval guide with progress ring
 ───────────────────────────────────────────── */
+const LIVENESS_CSS = `
+@keyframes lv-pulse{0%,100%{opacity:.4}50%{opacity:1}}
+@keyframes lv-pop{0%{transform:scale(0.8);opacity:0}50%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+@keyframes lv-success{0%{stroke-dashoffset:300}100%{stroke-dashoffset:0}}
+@keyframes lv-shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+.lv-challenge-enter{animation:lv-pop .35s ease both;}
+.lv-pulse{animation:lv-pulse 1.8s ease-in-out infinite;}
+`;
+
 const LIVENESS_CHALLENGES = [
-  { id: "center",  label: "Position your face in the oval",   detect: (l) => l.faceInOval },
-  { id: "left",    label: "Turn your head to the LEFT",       detect: (l) => l.yaw > 25 },
-  { id: "right",   label: "Turn your head to the RIGHT",      detect: (l) => l.yaw < -25 },
-  { id: "blink",   label: "Blink your eyes",                  detect: (l) => l.blink },
+  { id: "center", label: "Look straight at the camera", sub: "Position your face in the oval", detect: (l) => l.faceInOval },
+  { id: "left",   label: "Turn your head left",         sub: "Slowly rotate to your left",    detect: (l) => l.yaw > 25 },
+  { id: "right",  label: "Turn your head right",        sub: "Slowly rotate to your right",   detect: (l) => l.yaw < -25 },
+  { id: "blink",  label: "Blink naturally",             sub: "Close and open your eyes",       detect: (l) => l.blink },
 ];
 
 function getFaceLandmarks(landmarks) {
@@ -297,7 +306,7 @@ function FaceLiveness({ value, onChange }) {
   const streamRef = useRef(null);
   const landmarkerRef = useRef(null);
   const rafRef = useRef(null);
-  const holdTimerRef = useRef(null);
+  const cssRef = useRef(false);
 
   const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -307,43 +316,88 @@ function FaceLiveness({ value, onChange }) {
   const [faceDetected, setFaceDetected] = useState(false);
   const [holdProgress, setHoldProgress] = useState(0);
   const [error, setError] = useState("");
+  const [transitioning, setTransitioning] = useState(false);
 
-  const captureFrame = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return null;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.85);
+  useEffect(() => {
+    if (cssRef.current) return;
+    cssRef.current = true;
+    const s = document.createElement("style");
+    s.textContent = LIVENESS_CSS;
+    document.head.appendChild(s);
   }, []);
 
   const stopCamera = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    if (holdTimerRef.current) clearInterval(holdTimerRef.current);
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
     if (landmarkerRef.current) { landmarkerRef.current.close(); landmarkerRef.current = null; }
     setActive(false);
     setLoading(false);
   }, []);
 
-  const drawOvalGuide = useCallback((ctx, w, h, detected) => {
+  const drawOverlay = useCallback((ctx, w, h, detected, progress) => {
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     ctx.translate(w, 0);
     ctx.scale(-1, 1);
-    const cx = w / 2, cy = h * 0.44, rx = w * 0.28, ry = h * 0.38;
+    const cx = w / 2, cy = h * 0.43, rx = w * 0.29, ry = h * 0.39;
+
+    // Dark vignette outside oval
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2, true);
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fill();
+
+    // Oval border — base ring
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = detected ? T.green : "rgba(255,255,255,0.4)";
-    ctx.lineWidth = detected ? 3 : 2;
-    if (detected) { ctx.shadowColor = T.green; ctx.shadowBlur = 12; }
+    ctx.ellipse(cx, cy, rx + 2, ry + 2, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = detected ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 3;
     ctx.stroke();
+
+    // Progress ring around oval
+    if (progress > 0 && detected) {
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx + 2, ry + 2, 0, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * progress / 100));
+      ctx.strokeStyle = T.green;
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = "round";
+      ctx.shadowColor = T.green;
+      ctx.shadowBlur = 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (detected) {
+      // Glow ring when face detected but not holding
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx + 2, ry + 2, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = T.blue + "88";
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = T.blue;
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Corner guides
+    const gLen = 18, gOff = 6;
+    ctx.strokeStyle = detected ? T.green : "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.shadowBlur = 0;
+    const corners = [
+      [cx - rx - gOff, cy - ry - gOff, 1, 1],
+      [cx + rx + gOff, cy - ry - gOff, -1, 1],
+      [cx - rx - gOff, cy + ry + gOff, 1, -1],
+      [cx + rx + gOff, cy + ry + gOff, -1, -1],
+    ];
+    corners.forEach(([x, y, dx, dy]) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y + dy * gLen);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + dx * gLen, y);
+      ctx.stroke();
+    });
+
     ctx.restore();
   }, []);
 
@@ -354,14 +408,14 @@ function FaceLiveness({ value, onChange }) {
     setStep(0);
     setCaptures([]);
     setHoldProgress(0);
+    setFeedback("");
+    setTransitioning(false);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } }
       });
       streamRef.current = stream;
-
-      // Wait for video element to be available after render
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 150));
       const video = videoRef.current;
       if (!video) throw new Error("Video element not ready. Please try again.");
       video.srcObject = stream;
@@ -385,28 +439,43 @@ function FaceLiveness({ value, onChange }) {
       landmarkerRef.current = faceLandmarker;
       setLoading(false);
 
-      let currentStep = 0, holdStart = 0, completed = [], lastTime = 0;
+      let currentStep = 0, holdStart = 0, completed = [], lastTime = 0, pauseUntil = 0;
 
       const detect = () => {
         if (!videoRef.current || !landmarkerRef.current || videoRef.current.paused) return;
         const now = performance.now();
-        if (now - lastTime < 66) { rafRef.current = requestAnimationFrame(detect); return; }
+        if (now - lastTime < 50) { rafRef.current = requestAnimationFrame(detect); return; }
         lastTime = now;
+
+        // Pause between challenges for transition
+        if (now < pauseUntil) {
+          rafRef.current = requestAnimationFrame(detect);
+          return;
+        }
 
         const result = landmarkerRef.current.detectForVideo(videoRef.current, now);
         const overlay = overlayRef.current;
+        const hasFace = result.faceLandmarks && result.faceLandmarks.length > 0;
+        setFaceDetected(hasFace);
+
         if (overlay) {
           const ctx = overlay.getContext("2d");
           overlay.width = videoRef.current.videoWidth;
           overlay.height = videoRef.current.videoHeight;
-          const hasFace = result.faceLandmarks && result.faceLandmarks.length > 0;
-          setFaceDetected(hasFace);
-          drawOvalGuide(ctx, overlay.width, overlay.height, hasFace);
+          const hp = hasFace && result.faceLandmarks.length > 0 ? (() => {
+            const m = getFaceLandmarks(result.faceLandmarks);
+            if (!m) return 0;
+            const ch = LIVENESS_CHALLENGES[currentStep];
+            if (!ch.detect(m)) return 0;
+            if (!holdStart) return 1;
+            return Math.min(100, ((now - holdStart) / (ch.id === "blink" ? 200 : 800)) * 100);
+          })() : 0;
+          drawOverlay(ctx, overlay.width, overlay.height, hasFace, hp);
         }
 
-        if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+        if (hasFace) {
           const metrics = getFaceLandmarks(result.faceLandmarks);
-          if (!metrics) { setFeedback("Processing..."); rafRef.current = requestAnimationFrame(detect); return; }
+          if (!metrics) { rafRef.current = requestAnimationFrame(detect); return; }
 
           const challenge = LIVENESS_CHALLENGES[currentStep];
           const pass = challenge.detect(metrics);
@@ -415,174 +484,226 @@ function FaceLiveness({ value, onChange }) {
             if (!holdStart) holdStart = now;
             const held = now - holdStart;
             const required = challenge.id === "blink" ? 200 : 800;
-            setHoldProgress(Math.min(100, (held / required) * 100));
+            const prog = Math.min(100, (held / required) * 100);
+            setHoldProgress(prog);
+            setFeedback(prog > 60 ? "Almost there..." : "Hold steady...");
 
             if (held >= required) {
               const canvas = canvasRef.current;
               canvas.width = videoRef.current.videoWidth;
               canvas.height = videoRef.current.videoHeight;
               canvas.getContext("2d").drawImage(videoRef.current, 0, 0);
-              const image = canvas.toDataURL("image/jpeg", 0.85);
-              completed.push({ challenge: challenge.label, image, timestamp: new Date().toISOString() });
+              completed.push({ challenge: challenge.label, image: canvas.toDataURL("image/jpeg", 0.85), timestamp: new Date().toISOString() });
               setCaptures([...completed]);
               currentStep++;
               holdStart = 0;
               setHoldProgress(0);
+              setTransitioning(true);
 
               if (currentStep >= LIVENESS_CHALLENGES.length) {
-                const result = { verified: true, challengeCount: LIVENESS_CHALLENGES.length, completedAt: new Date().toISOString(), captures: completed };
-                stopCamera();
-                onChange(result);
+                setFeedback("Verification complete");
+                setTimeout(() => {
+                  stopCamera();
+                  onChange({ verified: true, challengeCount: LIVENESS_CHALLENGES.length, completedAt: new Date().toISOString(), captures: completed });
+                }, 600);
                 return;
               }
-              setStep(currentStep);
-              setFeedback("Great! Next challenge...");
-            } else {
-              setFeedback("Hold steady...");
+
+              setFeedback("Perfect");
+              pauseUntil = now + 800;
+              setTimeout(() => {
+                setStep(currentStep);
+                setTransitioning(false);
+                setFeedback("");
+              }, 700);
             }
           } else {
             holdStart = 0;
             setHoldProgress(0);
-            if (!metrics.faceInOval && challenge.id === "center") setFeedback("Move your face into the oval");
-            else if (challenge.id === "left" && metrics.yaw < 15) setFeedback("Turn more to your LEFT");
-            else if (challenge.id === "right" && metrics.yaw > -15) setFeedback("Turn more to your RIGHT");
-            else if (challenge.id === "blink") setFeedback("Blink your eyes now");
-            else setFeedback(challenge.label);
+            if (challenge.id === "center" && !metrics.faceInOval) {
+              if (metrics.centerX < 0.35) setFeedback("Move right");
+              else if (metrics.centerX > 0.65) setFeedback("Move left");
+              else if (metrics.centerY < 0.3) setFeedback("Move down");
+              else if (metrics.centerY > 0.7) setFeedback("Move up");
+              else if (metrics.faceW < 0.15) setFeedback("Move closer");
+              else setFeedback("Center your face in the oval");
+            } else if (challenge.id === "left") setFeedback("Turn more to your left");
+            else if (challenge.id === "right") setFeedback("Turn more to your right");
+            else if (challenge.id === "blink") setFeedback("Blink now");
           }
         } else {
-          setFeedback("No face detected — look at the camera");
+          holdStart = 0;
           setHoldProgress(0);
+          setFeedback("Position your face in the frame");
         }
         rafRef.current = requestAnimationFrame(detect);
       };
       rafRef.current = requestAnimationFrame(detect);
     } catch (e) {
       stopCamera();
-      setError(e.name === "NotAllowedError" ? "Camera access denied. Please allow camera access in your browser settings." : `Failed to initialise face detection: ${e.message || "Unknown error"}. Try refreshing the page.`);
+      setError(e.name === "NotAllowedError" ? "Camera access denied. Please allow camera access in your browser settings." : `${e.message || "Unknown error"}. Try refreshing the page.`);
     }
-  }, [stopCamera, onChange, captureFrame, drawOvalGuide]);
+  }, [stopCamera, onChange, drawOverlay]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
+  /* ── Verified state ── */
   if (value?.verified) {
     return (
-      <div style={{ border: `1px solid ${T.green}44`, borderRadius: 12, padding: 16, background: T.greenG }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.green, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      <div style={{ border: `1px solid ${T.green}33`, borderRadius: 14, overflow: "hidden", background: `linear-gradient(180deg, ${T.greenG} 0%, ${T.bg1} 100%)` }}>
+        <div style={{ padding: "20px 20px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", background: T.green, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Liveness Verified</div>
-            <div style={{ fontSize: 11, color: T.txt3 }}>{value.challengeCount} challenges completed · {new Date(value.completedAt).toLocaleString()}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: T.green }}>Identity Verified</div>
+            <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 2 }}>{value.challengeCount} challenges · {new Date(value.completedAt).toLocaleString()}</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <div style={{ padding: "0 20px 16px", display: "flex", gap: 8 }}>
           {value.captures.map((c, i) => (
-            <div key={i} style={{ textAlign: "center" }}>
-              <div style={{ width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: `2px solid ${T.green}44` }}>
+            <div key={i} style={{ flex: 1, textAlign: "center" }}>
+              <div style={{ aspectRatio: "1", borderRadius: 10, overflow: "hidden", border: `2px solid ${T.green}33`, background: T.bg2 }}>
                 <img src={c.image} alt={c.challenge} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
-              <div style={{ fontSize: 9, color: T.txt3, marginTop: 3, maxWidth: 64 }}>{c.challenge.replace("your head to the ", "")}</div>
+              <div style={{ fontSize: 9.5, color: T.txt3, marginTop: 5, lineHeight: 1.3 }}>{c.challenge.replace("Turn your head ", "").replace("Look straight at the camera", "Center")}</div>
             </div>
           ))}
         </div>
-        <button onClick={() => onChange(null)} style={{ marginTop: 10, fontSize: 11, color: T.txt3, background: "none", border: `1px solid ${T.bdr}`, borderRadius: 6, padding: "4px 12px", cursor: "pointer" }}>Redo verification</button>
+        <div style={{ padding: "10px 20px", borderTop: `1px solid ${T.bdr}`, display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={() => onChange(null)} style={{ fontSize: 11.5, color: T.txt3, background: T.bg2, border: `1px solid ${T.bdr}`, borderRadius: 6, padding: "5px 14px", cursor: "pointer" }}>Redo</button>
+        </div>
       </div>
     );
   }
 
+  /* ── Idle state ── */
   if (!active && !loading) {
     return (
       <div>
         <div
           onClick={startLiveness}
           style={{
-            border: `1.5px dashed ${T.bdrA}`, borderRadius: 12, padding: "28px 20px", cursor: "pointer",
-            textAlign: "center", background: `linear-gradient(180deg, ${T.bg2} 0%, ${T.bg1} 100%)`, transition: "all .25s",
+            border: `1px solid ${T.bdr}`, borderRadius: 14, cursor: "pointer", overflow: "hidden",
+            background: `linear-gradient(180deg, ${T.bg2} 0%, ${T.bg1} 100%)`, transition: "all .25s",
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = T.blue; e.currentTarget.style.background = T.blueGlowS; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = T.bdrA; e.currentTarget.style.background = `linear-gradient(180deg, ${T.bg2} 0%, ${T.bg1} 100%)`; }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = T.blue; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = T.bdr; }}
         >
-          <div style={{ width: 48, height: 48, borderRadius: "50%", background: T.blueGlow, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="9" r="4" stroke={T.blueL} strokeWidth="1.5"/><path d="M4 20C4 16.686 7.582 14 12 14s8 2.686 8 6" stroke={T.blueL} strokeWidth="1.5" strokeLinecap="round"/><rect x="1" y="1" width="22" height="22" rx="6" stroke={T.blueL} strokeWidth="1.5" strokeDasharray="3 3"/></svg>
+          {/* Face illustration area */}
+          <div style={{ padding: "32px 20px 24px", textAlign: "center" }}>
+            <div style={{ width: 72, height: 72, borderRadius: "50%", border: `2px dashed ${T.bdrA}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="10" r="4.5" stroke={T.txt3} strokeWidth="1.2"/>
+                <path d="M5 20c0-3.5 3.5-5.5 7-5.5s7 2 7 5.5" stroke={T.txt3} strokeWidth="1.2" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: T.txt, marginBottom: 4 }}>Face Liveness Check</div>
+            <div style={{ fontSize: 12.5, color: T.txt3, maxWidth: 300, margin: "0 auto" }}>
+              We'll verify your identity with a quick camera check. Ensure good lighting and face the camera directly.
+            </div>
           </div>
-          <div style={{ fontSize: 14, color: T.txt, fontWeight: 600 }}>Start Liveness Verification</div>
-          <div style={{ fontSize: 12, color: T.txt3, marginTop: 4 }}>Real-time face detection · 4 automated challenges</div>
-          <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 14 }}>
+
+          {/* Steps preview */}
+          <div style={{ padding: "14px 20px", borderTop: `1px solid ${T.bdr}`, display: "flex", gap: 0 }}>
             {LIVENESS_CHALLENGES.map((c, i) => (
-              <div key={i} style={{ fontSize: 10, color: T.txt3, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.bg3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: T.txt2 }}>{i + 1}</div>
-                <span>{c.label.replace("your head to the ", "").replace("Position your face in the oval", "Face center")}</span>
+              <div key={i} style={{ flex: 1, textAlign: "center", padding: "0 4px" }}>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.bg3, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 6px", fontSize: 12, fontWeight: 600, color: T.txt2 }}>{i + 1}</div>
+                <div style={{ fontSize: 10, color: T.txt3, lineHeight: 1.3 }}>{c.label.replace("Turn your head ", "Turn ").replace("Look straight at the camera", "Face center")}</div>
               </div>
             ))}
           </div>
+
+          {/* Start button area */}
+          <div style={{ padding: "14px 20px 18px", borderTop: `1px solid ${T.bdr}`, textAlign: "center" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 28px", borderRadius: 10, background: T.grad, color: "#fff", fontSize: 13.5, fontWeight: 600, letterSpacing: ".02em" }}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="#fff" strokeWidth="1.2"/><circle cx="8" cy="8" r="2.5" fill="#fff"/></svg>
+              Begin Verification
+            </div>
+          </div>
         </div>
-        {error && <div style={{ fontSize: 12, color: T.red, marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}><span>⚠</span>{error}</div>}
+        {error && <div style={{ fontSize: 12, color: T.red, marginTop: 10, padding: "8px 12px", background: T.redG, borderRadius: 8, border: `1px solid ${T.red}33` }}>{error}</div>}
       </div>
     );
   }
 
+  /* ── Active / camera state ── */
   const challenge = LIVENESS_CHALLENGES[step];
 
   return (
-    <div style={{ border: `1px solid ${T.bdrFocus}`, borderRadius: 12, overflow: "hidden", background: T.bg1 }}>
-      <div style={{ position: "relative", background: "#000", aspectRatio: "4/3" }}>
+    <div style={{ border: `1px solid ${T.bdrA}`, borderRadius: 14, overflow: "hidden", background: "#000" }}>
+      {/* Camera viewport */}
+      <div style={{ position: "relative", aspectRatio: "4/3" }}>
         <video ref={videoRef} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", transform: "scaleX(-1)" }} playsInline muted />
-        <canvas ref={overlayRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", transform: "scaleX(-1)" }} />
+        <canvas ref={overlayRef} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }} />
         <canvas ref={canvasRef} style={{ display: "none" }} />
 
         {/* Loading overlay */}
         {loading && (
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 10 }}>
-            <div style={{ width: 32, height: 32, border: `3px solid ${T.bdr}`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", marginBottom: 12 }} />
-            <div style={{ fontSize: 13, color: "#fff", fontWeight: 500 }}>Loading face detection model...</div>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", zIndex: 10, backdropFilter: "blur(4px)" }}>
+            <div style={{ width: 40, height: 40, border: `3px solid rgba(255,255,255,0.1)`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", marginBottom: 14 }} />
+            <div style={{ fontSize: 14, color: "#fff", fontWeight: 500 }}>Preparing face detection</div>
+            <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>This may take a few seconds</div>
           </div>
         )}
 
-        {/* Top status bar */}
-        <div style={{ position: "absolute", top: 0, left: 0, right: 0, padding: "12px 16px", background: "linear-gradient(rgba(0,0,0,0.7), transparent)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            {LIVENESS_CHALLENGES.map((_, i) => (
-              <div key={i} style={{ width: 24, height: 4, borderRadius: 2, background: i < step ? T.green : i === step ? T.blue : "rgba(255,255,255,0.2)", transition: "all .3s" }} />
+        {/* Step indicators — top */}
+        {!loading && (
+          <div style={{ position: "absolute", top: 12, left: 16, right: 16, display: "flex", gap: 4, zIndex: 5 }}>
+            {LIVENESS_CHALLENGES.map((c, i) => (
+              <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, overflow: "hidden", background: "rgba(255,255,255,0.12)" }}>
+                <div style={{
+                  height: "100%", borderRadius: 2, transition: "width .3s ease",
+                  background: i < step ? T.green : (i === step && holdProgress > 0) ? T.green : "transparent",
+                  width: i < step ? "100%" : i === step ? `${holdProgress}%` : "0%",
+                }} />
+              </div>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontFamily: "'IBM Plex Mono', monospace" }}>{step + 1}/{LIVENESS_CHALLENGES.length}</div>
-        </div>
+        )}
 
-        {/* Bottom instruction */}
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "20px 16px 16px", background: "linear-gradient(transparent, rgba(0,0,0,0.85))" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 15, fontWeight: 600, color: "#fff" }}>{challenge.label}</span>
+        {/* Transition overlay */}
+        {transitioning && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 6 }}>
+            <div className="lv-challenge-enter" style={{ background: "rgba(0,0,0,0.5)", borderRadius: 16, padding: "14px 28px", backdropFilter: "blur(6px)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke={T.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <span style={{ fontSize: 15, fontWeight: 600, color: "#fff" }}>Perfect</span>
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: faceDetected ? "rgba(255,255,255,0.7)" : T.red, textAlign: "center" }}>
-            {feedback || (faceDetected ? "Detecting..." : "No face detected")}
+        )}
+      </div>
+
+      {/* Instruction bar */}
+      {!loading && (
+        <div style={{ padding: "14px 18px", background: T.bg1, borderTop: `1px solid ${T.bdr}` }}>
+          <div key={step} className="lv-challenge-enter" style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: T.txt, marginBottom: 3 }}>{challenge.label}</div>
+            <div style={{ fontSize: 12, color: faceDetected ? T.txt3 : T.red }}>
+              {feedback || challenge.sub}
+            </div>
           </div>
-          {/* Hold progress bar */}
-          {holdProgress > 0 && (
-            <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", marginTop: 8, overflow: "hidden" }}>
-              <div style={{ height: "100%", borderRadius: 2, background: T.green, width: `${holdProgress}%`, transition: "width 0.1s linear" }} />
+
+          {/* Completed captures */}
+          {captures.length > 0 && (
+            <div style={{ display: "flex", gap: 6, marginTop: 12, justifyContent: "center" }}>
+              {captures.map((c, i) => (
+                <div key={i} style={{ position: "relative", width: 36, height: 36, borderRadius: 8, overflow: "hidden", border: `2px solid ${T.green}55` }}>
+                  <img src={c.image} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <div style={{ position: "absolute", bottom: -1, right: -1, width: 14, height: 14, borderRadius: "50%", background: T.green, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="8" height="8" viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
-      </div>
-
-      {/* Completed captures strip */}
-      {captures.length > 0 && (
-        <div style={{ display: "flex", gap: 6, padding: "10px 16px", background: T.bg2, borderTop: `1px solid ${T.bdr}` }}>
-          {captures.map((c, i) => (
-            <div key={i} style={{ width: 40, height: 40, borderRadius: 6, overflow: "hidden", border: `2px solid ${T.green}66`, flexShrink: 0 }}>
-              <img src={c.image} alt={c.challenge} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-          ))}
-          <div style={{ display: "flex", alignItems: "center", marginLeft: "auto" }}>
-            <span style={{ fontSize: 11, color: T.green }}>{captures.length} done</span>
-          </div>
-        </div>
       )}
 
-      {/* Cancel button */}
-      <div style={{ padding: "10px 16px", borderTop: `1px solid ${T.bdr}`, textAlign: "center" }}>
-        <button onClick={stopCamera} style={{ fontSize: 12, color: T.txt3, background: "none", border: "none", cursor: "pointer" }}>Cancel verification</button>
+      {/* Cancel */}
+      <div style={{ padding: "8px 18px 12px", background: T.bg1, textAlign: "center" }}>
+        <button onClick={stopCamera} style={{ fontSize: 11.5, color: T.txt3, background: "none", border: "none", cursor: "pointer", padding: "4px 8px" }}>Cancel</button>
       </div>
     </div>
   );
