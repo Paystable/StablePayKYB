@@ -987,16 +987,8 @@ function renderStep(step, data, set) {
           { key: "doc_biz_poa",   label: "Proof of Registered Business Address",             req: true,  hint: "Utility bill, lease agreement, or bank statement ≤3 months old" },
           { key: "doc_ubo_id",    label: "Government-Issued ID — All BOs & Signatories",     req: true,  hint: "Passport (preferred), Aadhaar, Voter ID, Driving Licence — clear colour scan" },
           { key: "doc_ubo_poa",   label: "Proof of Residential Address — All BOs",           req: true,  hint: "Utility bill, Aadhaar, bank statement ≤3 months old" },
-          { key: "doc_shareReg",  label: "Shareholder Register / Register of Members",       req: true,  hint: "Must reflect current shareholding" },
-          { key: "doc_structure", label: "Corporate Ownership / Structure Chart",            req: true,  hint: "Showing all intermediate entities and % holdings to ultimate natural persons" },
-          { key: "doc_authLetter",label: "Authorisation Letter / Board Resolution",          req: true,  hint: "On letterhead, listing Directors, Signatories, and their contact details — signed & dated" },
           { key: "doc_financials",label: "Audited Financial Statements (most recent FY)",   req: false, hint: "CA-certified accounts acceptable if audit is not yet complete" },
-          { key: "doc_bankStmt",  label: "Business Bank Statement (3–6 months)",            req: true,  hint: "Primary operating account — unaltered PDF from bank" },
-          { key: "doc_amlPolicy", label: "AML/CFT Policy Document",                         req: false, hint: "Board-approved, current version" },
           { key: "doc_walletOwn", label: "Crypto Wallet Ownership Confirmation",            req: true,  hint: "Screenshot of wallet UI + signed message from wallet private key, OR blockchain explorer printout, OR custodial statement. If no wallet, upload a blank PDF with 'N/A' stated." },
-          { key: "doc_sof",       label: "Source of Funds — Business",                      req: true,  hint: "Funding agreements, VC term sheets, revenue contracts, or latest audited accounts" },
-          { key: "doc_sowBO1",    label: "Source of Wealth — Beneficial Owner 1",           req: true,  hint: "Pay slips, employment contract, investment statements, property sale deed, etc." },
-          { key: "doc_sowBO2",    label: "Source of Wealth — Beneficial Owner 2",           req: false, hint: "If applicable" },
         ].map(d => (
           <Field key={d.key} label={d.label} required={d.req} hint={d.hint}>
             <FileUpload value={v(d.key)} onChange={val => set(d.key, val)} />
@@ -1043,24 +1035,6 @@ function renderStep(step, data, set) {
         <Field label="Additional Remarks" hint="Any other information the compliance team should be aware of">
           <Textarea value={v("decl_remarks")} onChange={val => set("decl_remarks", val)} placeholder="Optional — any additional context, ongoing regulatory engagements, or pending filings relevant to this application" rows={3} />
         </Field>
-
-        <div style={{ background: T.bg0, border: `1px solid ${T.bdrA}`, borderRadius: 12, padding: "18px 20px", marginTop: 8 }}>
-          <div style={{ fontSize: 11.5, fontWeight: 600, color: T.txt2, letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>After Submission</div>
-          {[
-            ["📬","Acknowledgement email", "Sent immediately to your contact address"],
-            ["🔍","Compliance review", "2–5 business days. Our team may request clarifications."],
-            ["✅","Account activation", "OTC limits and wallet details issued upon approval"],
-            ["📋","Ongoing monitoring", "Periodic KYB refresh required — typically annually"],
-          ].map(([icon, title, desc]) => (
-            <div key={title} style={{ display: "flex", gap: 12, marginBottom: 10, alignItems: "flex-start" }}>
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: T.txt }}>{title}</div>
-                <div style={{ fontSize: 12, color: T.txt3 }}>{desc}</div>
-              </div>
-            </div>
-          ))}
-        </div>
       </>
     );
 
