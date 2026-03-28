@@ -260,10 +260,10 @@ function FileUpload({ value, onChange, hint }) {
    of head pose, gaze direction, and blink
 ───────────────────────────────────────────── */
 const LIVENESS_CHALLENGES = [
-  { id: "center",  label: "Position your face in the oval",   icon: "🎯", detect: (l) => l.faceInOval },
-  { id: "left",    label: "Turn your head to the LEFT",       icon: "👈", detect: (l) => l.yaw > 25 },
-  { id: "right",   label: "Turn your head to the RIGHT",      icon: "👉", detect: (l) => l.yaw < -25 },
-  { id: "blink",   label: "Blink your eyes",                  icon: "😌", detect: (l) => l.blink },
+  { id: "center",  label: "Position your face in the oval",   detect: (l) => l.faceInOval },
+  { id: "left",    label: "Turn your head to the LEFT",       detect: (l) => l.yaw > 25 },
+  { id: "right",   label: "Turn your head to the RIGHT",      detect: (l) => l.yaw < -25 },
+  { id: "blink",   label: "Blink your eyes",                  detect: (l) => l.blink },
 ];
 
 function getFaceLandmarks(landmarks) {
@@ -362,13 +362,18 @@ function FaceLiveness({ value, onChange }) {
       const vision = await import("@mediapipe/tasks-vision");
       const { FaceLandmarker, FilesetResolver } = vision;
       const filesetResolver = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm");
-      const faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
-        baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
-        runningMode: "VIDEO",
-        numFaces: 1,
-        outputFaceBlendshapes: false,
-        outputFacialTransformationMatrixes: false,
-      });
+      let faceLandmarker;
+      try {
+        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+          baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
+          runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: false, outputFacialTransformationMatrixes: false,
+        });
+      } catch {
+        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+          baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" },
+          runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: false, outputFacialTransformationMatrixes: false,
+        });
+      }
       landmarkerRef.current = faceLandmarker;
 
       setActive(true);
@@ -450,7 +455,7 @@ function FaceLiveness({ value, onChange }) {
       rafRef.current = requestAnimationFrame(detect);
     } catch (e) {
       setLoading(false);
-      setError(e.name === "NotAllowedError" ? "Camera access denied. Please allow camera access in your browser settings." : "Failed to start liveness check. Ensure camera access is allowed.");
+      setError(e.name === "NotAllowedError" ? "Camera access denied. Please allow camera access in your browser settings." : `Failed to initialise face detection: ${e.message || "Unknown error"}. Try refreshing the page.`);
     }
   }, [stopCamera, onChange, captureFrame, drawOvalGuide]);
 
@@ -503,7 +508,7 @@ function FaceLiveness({ value, onChange }) {
           <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 14 }}>
             {LIVENESS_CHALLENGES.map((c, i) => (
               <div key={i} style={{ fontSize: 10, color: T.txt3, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: 16 }}>{c.icon}</span>
+                <div style={{ width: 28, height: 28, borderRadius: "50%", background: T.bg3, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: T.txt2 }}>{i + 1}</div>
                 <span>{c.label.replace("your head to the ", "").replace("Position your face in the oval", "Face center")}</span>
               </div>
             ))}
@@ -546,7 +551,6 @@ function FaceLiveness({ value, onChange }) {
         {/* Bottom instruction */}
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, padding: "20px 16px 16px", background: "linear-gradient(transparent, rgba(0,0,0,0.85))" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
-            <span style={{ fontSize: 20 }}>{challenge.icon}</span>
             <span style={{ fontSize: 15, fontWeight: 600, color: "#fff" }}>{challenge.label}</span>
           </div>
           <div style={{ fontSize: 12, color: faceDetected ? "rgba(255,255,255,0.7)" : T.red, textAlign: "center" }}>
