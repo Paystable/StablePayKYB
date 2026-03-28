@@ -1554,8 +1554,6 @@ export default function App() {
   const [step, setStep] = useState(0);
   const [data, setData] = useState({});
   const [submitted, setSubmitted] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
   const [loadingApp, setLoadingApp] = useState(true);
   const [linkCopied, setLinkCopied] = useState(false);
   const contentRef = useRef();
@@ -1585,33 +1583,7 @@ export default function App() {
     }
   }, []);
 
-  // Auto-save draft when data changes (debounced)
-  const dataRef = useRef(data);
-  const dirtyRef = useRef(false);
-
-  const set = useCallback((k, v) => {
-    setData(d => {
-      const next = { ...d, [k]: v };
-      dataRef.current = next;
-      dirtyRef.current = true;
-      return next;
-    });
-  }, []);
-
-  // Auto-save on interval instead of on every data change
-  useEffect(() => {
-    if (!appId || submitted) return;
-    const interval = setInterval(async () => {
-      if (!dirtyRef.current) return;
-      dirtyRef.current = false;
-      try {
-        setSaving(true);
-        await apiSaveDraft(appId, dataRef.current);
-        setLastSaved(new Date());
-      } catch {} finally { setSaving(false); }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [appId, submitted]);
+  const set = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
 
   const goTo = (s) => { setStep(s); contentRef.current?.scrollTo({ top: 0, behavior: "smooth" }); };
 
@@ -1773,16 +1745,6 @@ export default function App() {
             <span style={{ fontSize: 12.5, color: T.txt2, fontWeight: 500 }}>{STEPS[step].label}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {/* Save status */}
-            {appId && (
-              <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: saving ? T.amber : T.txt3 }}>
-                {saving ? (
-                  <><div style={{ width: 5, height: 5, borderRadius: "50%", background: T.amber, animation: "pulse 1s infinite" }} /> Saving...</>
-                ) : lastSaved ? (
-                  <><div style={{ width: 5, height: 5, borderRadius: "50%", background: T.green }} /> Saved</>
-                ) : null}
-              </div>
-            )}
             {/* Copy link */}
             {appId && (
               <button onClick={copyLink} style={{ fontSize: 11, color: linkCopied ? T.green : T.blueL, background: T.bg3, border: `1px solid ${T.bdr}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
