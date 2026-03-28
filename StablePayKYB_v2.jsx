@@ -1515,7 +1515,15 @@ function CorporateStructureChart({ data, value, onChange }) {
     { id: 3, name: "", type: "shareholder", pct: "", parent: 1, level: 1 },
   ]);
   const [showUpload, setShowUpload] = useState(false);
+  const [editCompanyName, setEditCompanyName] = useState(value?.companyName || data?.co_name || "");
+  const [companyLogo, setCompanyLogo] = useState(value?.companyLogo || null);
+  const [chartDate, setChartDate] = useState(value?.date || new Date().toISOString().split("T")[0]);
+  const logoRef = useRef(null);
   const nextId = useRef(4);
+  const companyName = editCompanyName || data?.co_name || "COMPANY NAME";
+  const crn = data?.co_crn || "";
+  const regAddr = data?.co_regAddr || "";
+  const formattedDate = chartDate ? new Date(chartDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
 
   const addEntity = (parentId) => {
     const parent = entities.find(e => e.id === parentId);
@@ -1536,7 +1544,7 @@ function CorporateStructureChart({ data, value, onChange }) {
   };
 
   const saveChart = () => {
-    onChange?.({ type: "structure_chart", entities, completed: true });
+    onChange?.({ type: "structure_chart", entities, companyName, companyLogo, crn, regAddr, date: chartDate, completed: true });
     setMode("completed");
   };
 
@@ -1616,7 +1624,7 @@ function CorporateStructureChart({ data, value, onChange }) {
       </div>`;
     };
     const root = entities.find(e => e.parent === null);
-    return `<!DOCTYPE html><html><head><title>Corporate Structure - ${root?.name || 'Company'}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:40px;color:#1a1a1a}h1{text-align:center;font-size:16px;letter-spacing:2px;margin-bottom:8px;text-transform:uppercase}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:24px}@media print{@page{margin:15mm;size:landscape}}</style></head><body><h1>Corporate Ownership Structure</h1><p class="sub">${root?.name || 'Company'} \u2014 Ownership chain to ultimate beneficial owners</p>${root ? renderHTMLNode(root) : ''}</body></html>`;
+    return `<!DOCTYPE html><html><head><title>Corporate Structure - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:48px 56px;color:#1a1a1a;max-width:900px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}.co-name{font-size:18px;font-weight:700;letter-spacing:1px}.co-detail{font-size:11px;color:#555;margin-top:2px;line-height:1.5}hr{border:none;border-top:1.5px solid #ccc;margin:16px 0}h1{text-align:center;font-size:15px;letter-spacing:3px;margin:20px 0 4px;text-transform:uppercase}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:24px}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="header"><div><div class="co-name">${companyName}</div>${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}</div>${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div style="width:80px;height:80px;border:1.5px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center">Company<br/>Logo</div>`}</div><hr/><h1>Corporate Ownership Structure</h1><p class="sub">Date: ${formattedDate}</p>${root ? renderHTMLNode(root) : ''}</body></html>`;
   };
 
   const downloadPDF = () => {
@@ -1661,8 +1669,29 @@ function CorporateStructureChart({ data, value, onChange }) {
         </div>
       ) : (
         <>
-          <div style={{ margin: 16, borderRadius: 8, background: "#FAFAFA", border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: "24px 16px", overflowX: "auto" }}>
-            {renderNode(entities.find(e => e.parent === null) || entities[0])}
+          <div style={{ margin: 16, borderRadius: 8, background: "#FAFAFA", border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)", padding: "36px 40px", fontFamily: "'Inter', sans-serif", color: "#1a1a1a" }}>
+            {/* Letterhead */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <input defaultValue={companyName} onBlur={e => setEditCompanyName(e.target.value)} style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1, border: "none", borderBottom: "1px dashed #bbb", background: "transparent", outline: "none", width: "100%", fontFamily: "'Inter', sans-serif" }} placeholder="Company Name" />
+                {crn && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CRN: {crn}</div>}
+                {regAddr && <div style={{ fontSize: 11, color: "#666", marginTop: 2, maxWidth: 360, lineHeight: 1.4 }}>{regAddr}</div>}
+              </div>
+              <div onClick={() => logoRef.current?.click()} style={{ width: 72, height: 72, border: "1.5px dashed #ccc", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#aaa", fontSize: 9, textAlign: "center", lineHeight: 1.3, cursor: "pointer", overflow: "hidden" }}>
+                {companyLogo ? <img src={companyLogo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <>Click to<br/>add logo</>}
+                <input ref={logoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = ev => setCompanyLogo(ev.target.result); reader.readAsDataURL(file); } }} />
+              </div>
+            </div>
+            <div style={{ borderTop: "1.5px solid #ccc", margin: "16px 0" }} />
+            <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", textAlign: "center", margin: "20px 0 8px" }}>Corporate Ownership Structure</div>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <span style={{ fontSize: 12, color: "#555" }}>Date: </span>
+              <input type="date" defaultValue={chartDate} onBlur={e => setChartDate(e.target.value)} style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#1a1a1a", fontSize: 12, fontFamily: "'Inter', sans-serif", padding: "2px 4px", outline: "none" }} />
+            </div>
+            {/* Chart */}
+            <div style={{ overflowX: "auto", padding: "8px 0" }}>
+              {renderNode(entities.find(e => e.parent === null) || entities[0])}
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderTop: `1px solid ${T.bdr}`, justifyContent: "flex-end" }}>
             <button onClick={downloadPDF} style={{ padding: "8px 20px", border: `1px solid ${T.bdrA}`, borderRadius: 8, background: T.bg2, color: T.txt2, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Preview / Download</button>
@@ -1685,15 +1714,20 @@ function ShareholderRegister({ data, value, onChange }) {
   ]);
   const [registerDate, setRegisterDate] = useState(value?.registerDate || new Date().toISOString().split("T")[0]);
   const [showUpload, setShowUpload] = useState(false);
+  const [editCompanyName, setEditCompanyName] = useState(value?.companyName || data?.co_name || "");
+  const [companyLogo, setCompanyLogo] = useState(value?.companyLogo || null);
+  const logoRef = useRef(null);
 
-  const companyName = data?.co_name || "Company";
+  const companyName = editCompanyName || data?.co_name || "COMPANY NAME";
+  const crn = data?.co_crn || "";
+  const regAddr = data?.co_regAddr || "";
 
   const addRow = () => setShareholders([...shareholders, { name: "", shares: "", pct: "", classType: "Ordinary", dateAcq: "", address: "" }]);
   const removeRow = () => { if (shareholders.length > 1) setShareholders(shareholders.slice(0, -1)); };
   const updateRow = (i, field, val) => setShareholders(shareholders.map((s, idx) => idx === i ? { ...s, [field]: val } : s));
 
   const saveRegister = () => {
-    onChange?.({ type: "shareholder_register", shareholders: shareholders.filter(s => s.name.trim()), registerDate, companyName, completed: true });
+    onChange?.({ type: "shareholder_register", shareholders: shareholders.filter(s => s.name.trim()), registerDate, companyName, companyLogo, crn, regAddr, completed: true });
     setMode("completed");
   };
 
@@ -1702,7 +1736,7 @@ function ShareholderRegister({ data, value, onChange }) {
       `<tr><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;">${s.name}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.shares}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.pct}%</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;text-align:center;">${s.classType}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:12px;">${s.dateAcq}</td><td style="padding:8px 10px;border:1px solid #ccc;font-size:11px;">${s.address}</td></tr>`
     ).join("");
     const formattedDate = registerDate ? new Date(registerDate + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "";
-    return `<!DOCTYPE html><html><head><title>Shareholder Register - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:40px 48px;color:#1a1a1a;line-height:1.6;font-size:13px}h1{font-size:15px;letter-spacing:3px;text-transform:uppercase;text-align:center;margin:20px 0 4px}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin:16px 0}th{background:#f5f5f5;padding:8px 10px;border:1px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left}.co{font-size:16px;font-weight:700;letter-spacing:1px;text-align:center;margin-bottom:4px}.date{font-size:11px;color:#555;text-align:center}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="co">${companyName}</div><h1>Register of Members</h1><p class="sub">As at ${formattedDate}</p><table><thead><tr><th>Name of Shareholder</th><th style="text-align:center">No. of Shares</th><th style="text-align:center">% Holding</th><th style="text-align:center">Class</th><th>Date Acquired</th><th>Address</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#555;">I certify that the above is a true and complete extract from the Register of Members of ${companyName} as at the date stated above.</p><div style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px"><div><div style="border-bottom:1px solid #1a1a1a;width:200px;margin-bottom:4px;height:40px"></div><div>Company Secretary / Director</div></div><div><div>Date: ${formattedDate}</div></div></div></body></html>`;
+    return `<!DOCTYPE html><html><head><title>Shareholder Register - ${companyName}</title><style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Inter',sans-serif;padding:48px 56px;color:#1a1a1a;line-height:1.6;font-size:13px;max-width:900px;margin:0 auto}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}.co-name{font-size:18px;font-weight:700;letter-spacing:1px}.co-detail{font-size:11px;color:#555;margin-top:2px;line-height:1.5}hr{border:none;border-top:1.5px solid #ccc;margin:16px 0}h1{font-size:15px;letter-spacing:3px;text-transform:uppercase;text-align:center;margin:20px 0 4px}p.sub{text-align:center;font-size:11px;color:#666;margin-bottom:20px}table{width:100%;border-collapse:collapse;margin:16px 0}th{background:#f5f5f5;padding:8px 10px;border:1px solid #ccc;font-size:10px;text-transform:uppercase;letter-spacing:1px;text-align:left}@media print{@page{margin:15mm;size:landscape}}</style></head><body><div class="header"><div><div class="co-name">${companyName}</div>${crn ? `<div class="co-detail">CRN: ${crn}</div>` : ""}${regAddr ? `<div class="co-detail">${regAddr}</div>` : ""}</div>${companyLogo ? `<img src="${companyLogo}" alt="Logo" style="width:80px;height:80px;object-fit:contain;border-radius:8px"/>` : `<div style="width:80px;height:80px;border:1.5px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:10px;text-align:center">Company<br/>Logo</div>`}</div><hr/><h1>Register of Members</h1><p class="sub">As at ${formattedDate}</p><table><thead><tr><th>Name of Shareholder</th><th style="text-align:center">No. of Shares</th><th style="text-align:center">% Holding</th><th style="text-align:center">Class</th><th>Date Acquired</th><th>Address</th></tr></thead><tbody>${rows}</tbody></table><p style="margin-top:24px;font-size:11px;color:#555;">I certify that the above is a true and complete extract from the Register of Members of ${companyName} as at the date stated above.</p><div style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:12px"><div><div style="border-bottom:1px solid #1a1a1a;width:200px;margin-bottom:4px;height:40px"></div><div>Company Secretary / Director</div></div><div><div>Date: ${formattedDate}</div></div></div></body></html>`;
   };
 
   const downloadPDF = () => {
@@ -1752,13 +1786,25 @@ function ShareholderRegister({ data, value, onChange }) {
         </div>
       ) : (
         <>
-          <div style={{ margin: 16, borderRadius: 8, background: "#FAFAFA", border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,0.08)", padding: "28px 24px", fontFamily: "'Inter', sans-serif", color: "#1a1a1a" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, textAlign: "center", letterSpacing: 1, marginBottom: 2 }}>{companyName}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: 2, textTransform: "uppercase", textAlign: "center", margin: "12px 0 4px" }}>Register of Members</div>
+          <div style={{ margin: 16, borderRadius: 8, background: "#FAFAFA", border: "1px solid #e0e0e0", boxShadow: "0 2px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.06)", padding: "36px 40px", fontFamily: "'Inter', sans-serif", color: "#1a1a1a", lineHeight: 1.7 }}>
+            {/* Letterhead */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ flex: 1 }}>
+                <input defaultValue={companyName} onBlur={e => setEditCompanyName(e.target.value)} style={{ fontSize: 18, fontWeight: 700, color: "#1a1a1a", letterSpacing: 1, border: "none", borderBottom: "1px dashed #bbb", background: "transparent", outline: "none", width: "100%", fontFamily: "'Inter', sans-serif" }} placeholder="Company Name" />
+                {crn && <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>CRN: {crn}</div>}
+                {regAddr && <div style={{ fontSize: 11, color: "#666", marginTop: 2, maxWidth: 360, lineHeight: 1.4 }}>{regAddr}</div>}
+              </div>
+              <div onClick={() => logoRef.current?.click()} style={{ width: 72, height: 72, border: "1.5px dashed #ccc", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#aaa", fontSize: 9, textAlign: "center", lineHeight: 1.3, cursor: "pointer", overflow: "hidden" }}>
+                {companyLogo ? <img src={companyLogo} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <>Click to<br/>add logo</>}
+                <input ref={logoRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const file = e.target.files?.[0]; if (file) { const reader = new FileReader(); reader.onload = ev => setCompanyLogo(ev.target.result); reader.readAsDataURL(file); } }} />
+              </div>
+            </div>
+            <div style={{ borderTop: "1.5px solid #ccc", margin: "16px 0" }} />
+            <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase", textAlign: "center", margin: "20px 0 8px" }}>Register of Members</div>
             <div style={{ textAlign: "center", marginBottom: 16 }}>
-              <span style={{ fontSize: 11, color: "#555" }}>As at: </span>
+              <span style={{ fontSize: 12, color: "#555" }}>As at: </span>
               <input type="date" defaultValue={registerDate} onBlur={e => setRegisterDate(e.target.value)}
-                style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#1a1a1a", fontSize: 11, fontFamily: "'Inter', sans-serif", padding: "2px 4px", outline: "none" }} />
+                style={{ border: "none", borderBottom: "1px dashed #bbb", background: "transparent", color: "#1a1a1a", fontSize: 12, fontFamily: "'Inter', sans-serif", padding: "2px 4px", outline: "none" }} />
             </div>
 
             <div style={{ overflowX: "auto" }}>
