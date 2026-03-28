@@ -67,6 +67,18 @@ const GLOBAL_CSS = `
   .sp-glass{background:linear-gradient(180deg,rgba(255,255,255,0.05) 0%,rgba(255,255,255,0.02) 100%);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(10px);}
   .sp-grid-bg{background-image:linear-gradient(rgba(102,103,171,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(102,103,171,0.03) 1px,transparent 1px);background-size:60px 60px;}
   .sp-noise{position:fixed;top:0;left:0;width:100%;height:100%;opacity:0.015;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+  @media(max-width:768px){
+    .sp-sidebar{display:none!important;}
+    .sp-mobile-nav{display:flex!important;}
+    .sp-main{padding:16px!important;}
+    .sp-topbar{padding:10px 16px!important;}
+    .sp-bottombar{padding:12px 16px!important;}
+    .sp-form-body{padding:20px 16px!important;max-width:100%!important;}
+    .sp-grid{grid-template-columns:1fr!important;}
+  }
+  @media(min-width:769px){
+    .sp-mobile-nav{display:none!important;}
+  }
 `;
 
 /* ─────────────────────────────────────────────
@@ -769,7 +781,7 @@ const STEPS = [
 
 function Sidebar({ step, setStep }) {
   return (
-    <div style={{
+    <div className="sp-sidebar" style={{
       width: 256, flexShrink: 0,
       background: "linear-gradient(180deg, rgba(15,15,24,0.98) 0%, rgba(10,10,15,0.98) 100%)",
       borderRight: `1px solid rgba(255,255,255,0.06)`,
@@ -852,7 +864,7 @@ function Sidebar({ step, setStep }) {
       {/* Sidebar footer */}
       <div style={{ padding: "16px 24px", borderTop: `1px solid ${T.bdr}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: T.txt3 }}>stablepay.global</span>
+          <span style={{ fontSize: 11, color: T.txt3 }}>compliance@stablepay.global</span>
         </div>
       </div>
     </div>
@@ -869,7 +881,7 @@ function SectionHead({ label, title, description, compliance }) {
         <span style={{ fontSize: 10.5, fontWeight: 600, color: T.blue, letterSpacing: ".1em", textTransform: "uppercase" }}>{label}</span>
         {compliance && compliance.map(c => <Tag key={c} color={c === "FIU-IND" || c === "PMLA" ? "amber" : "blue"}>{c}</Tag>)}
       </div>
-      <h2 style={{ fontSize: 22, fontWeight: 700, color: T.txt, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: "-.02em", marginBottom: 8 }}>{title}</h2>
+      <h2 style={{ fontSize: "clamp(18px, 4vw, 22px)", fontWeight: 700, color: T.txt, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: "-.02em", marginBottom: 8 }}>{title}</h2>
       {description && <p style={{ fontSize: 13.5, color: T.txt2, lineHeight: 1.65, maxWidth: 540 }}>{description}</p>}
     </div>
   );
@@ -892,9 +904,10 @@ function AIAssistant({ currentStep }) {
 
   const stepLabels = STEPS.map(s => s.label);
 
-  const send = async () => {
-    if (!inp.trim() || loading) return;
-    const txt = inp.trim();
+  const send = async (directText) => {
+    const raw = directText || inp;
+    if (!raw.trim() || loading) return;
+    const txt = raw.trim();
     setInp("");
     setMsgs(m => [...m, { r: "u", t: txt }]);
     setLoading(true);
@@ -923,9 +936,10 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
         }),
       });
       const d = await res.json();
+      if (!res.ok || d.error) { throw new Error(); }
       setMsgs(m => [...m, { r: "a", t: d.content?.[0]?.text || "Unable to respond. Try again." }]);
     } catch {
-      setMsgs(m => [...m, { r: "a", t: "Connection error. Please retry." }]);
+      setMsgs(m => [...m, { r: "a", t: "AI assistant is currently unavailable. For help, contact compliance@stablepay.global" }]);
     }
     setLoading(false);
   };
@@ -937,7 +951,7 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
       <button
         onClick={() => setOpen(p => !p)}
         style={{
-          position: "fixed", bottom: 28, right: 28, zIndex: 1200,
+          position: "fixed", bottom: 20, right: 16, zIndex: 1200,
           width: 52, height: 52, borderRadius: "50%",
           background: open ? T.bg3 : T.grad,
           border: `1.5px solid ${open ? T.bdrA : "transparent"}`,
@@ -957,8 +971,8 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
 
       {open && (
         <div style={{
-          position: "fixed", bottom: 92, right: 28, zIndex: 1100,
-          width: 368, height: 520,
+          position: "fixed", bottom: 84, right: 12, zIndex: 1100,
+          width: "min(368px, calc(100vw - 24px))", height: "min(520px, calc(100vh - 140px))",
           background: "linear-gradient(180deg, rgba(20,20,30,0.95) 0%, rgba(10,10,15,0.98) 100%)",
           border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16,
           display: "flex", flexDirection: "column",
@@ -1004,7 +1018,7 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
           {/* quick prompts */}
           <div style={{ padding: "6px 10px 4px", display: "flex", gap: 5, flexWrap: "wrap" }}>
             {QUICK.map(q => (
-              <button key={q} onClick={() => setInp(q)} style={{
+              <button key={q} onClick={() => send(q)} style={{
                 fontSize: 10.5, padding: "4px 9px", borderRadius: 20, border: `1px solid ${T.bdrA}`,
                 background: "transparent", color: T.txt3, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
               }}>{q}</button>
@@ -1049,7 +1063,7 @@ const TOKENS = ["USDT (TRC-20)","USDT (ERC-20)","USDC (ERC-20)","USDC (Solana)",
 function renderStep(step, data, set) {
   const v = k => data[k];
   const G = ({ children, cols = 2 }) => (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "20px 20px" }}>
+    <div className="sp-grid" style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "20px 20px" }}>
       {children}
     </div>
   );
@@ -1737,7 +1751,7 @@ export default function App() {
         <div style={{ position: "fixed", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(136,137,192,0.08) 0%, transparent 70%)", bottom: "20%", left: 200, filter: "blur(80px)", animation: "float 25s ease-in-out infinite", animationDelay: "-12s", pointerEvents: "none", zIndex: 0 }} />
 
         {/* Top bar */}
-        <div style={{
+        <div className="sp-topbar" style={{
           position: "sticky", top: 0, zIndex: 50,
           background: "rgba(10,10,15,0.85)", backdropFilter: "blur(16px)",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
@@ -1763,15 +1777,26 @@ export default function App() {
           </div>
         </div>
 
+        {/* Mobile step nav */}
+        <div className="sp-mobile-nav" style={{ display: "none", padding: "10px 16px", gap: 6, overflowX: "auto", background: T.bg1, borderBottom: `1px solid ${T.bdr}` }}>
+          {STEPS.map(s => (
+            <button key={s.id} onClick={() => goTo(s.id)} style={{
+              padding: "6px 12px", borderRadius: 20, border: `1px solid ${s.id === step ? T.blue : T.bdr}`,
+              background: s.id === step ? T.blueGlowS : "transparent", color: s.id === step ? T.blueL : T.txt3,
+              fontSize: 11, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+            }}>{s.label}</button>
+          ))}
+        </div>
+
         {/* Form body */}
-        <div style={{ flex: 1, padding: "40px 40px 40px", maxWidth: 800, width: "100%", position: "relative", zIndex: 1 }}>
+        <div className="sp-form-body" style={{ flex: 1, padding: "40px 40px 40px", maxWidth: 800, width: "100%", position: "relative", zIndex: 1 }}>
           <div className="sp-fade" key={step}>
             {renderStep(step, data, set)}
           </div>
         </div>
 
         {/* Bottom nav */}
-        <div style={{
+        <div className="sp-bottombar" style={{
           position: "sticky", bottom: 0, zIndex: 50,
           background: "rgba(10,10,15,0.88)", backdropFilter: "blur(16px)",
           borderTop: "1px solid rgba(255,255,255,0.06)",
