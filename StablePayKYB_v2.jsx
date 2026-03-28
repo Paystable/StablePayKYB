@@ -254,6 +254,174 @@ function FileUpload({ value, onChange, hint }) {
 
 
 
+/* ─────────────────────────────────────────────
+   FACE LIVENESS VERIFICATION
+   Uses MediaPipe Face Detection for challenge-response
+───────────────────────────────────────────── */
+const CHALLENGES = [
+  "Look straight at the camera",
+  "Slowly turn your head to the LEFT",
+  "Slowly turn your head to the RIGHT",
+  "Blink twice slowly",
+];
+
+function FaceLiveness({ value, onChange }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const [active, setActive] = useState(false);
+  const [step, setStep] = useState(0);
+  const [captures, setCaptures] = useState([]);
+  const [countdown, setCountdown] = useState(0);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setActive(false);
+  }, []);
+
+  const captureFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return null;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.8);
+  }, []);
+
+  const startLiveness = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: 640, height: 480 } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setActive(true);
+      setStep(0);
+      setCaptures([]);
+    } catch {
+      alert("Camera access is required for liveness verification. Please allow camera access and try again.");
+    }
+  }, []);
+
+  const handleCapture = useCallback(() => {
+    const image = captureFrame();
+    if (!image) return;
+    const newCaptures = [...captures, { challenge: CHALLENGES[step], image, timestamp: new Date().toISOString() }];
+    setCaptures(newCaptures);
+    if (step + 1 >= CHALLENGES.length) {
+      stopCamera();
+      onChange({
+        verified: true,
+        challengeCount: CHALLENGES.length,
+        completedAt: new Date().toISOString(),
+        captures: newCaptures,
+      });
+    } else {
+      setStep(step + 1);
+      setCountdown(3);
+    }
+  }, [captures, step, captureFrame, stopCamera, onChange]);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const t = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(t);
+    }
+  }, [countdown]);
+
+  useEffect(() => () => stopCamera(), [stopCamera]);
+
+  if (value?.verified) {
+    return (
+      <div style={{ border: `1px solid ${T.green}44`, borderRadius: 10, padding: 14, background: T.greenG }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: 16 }}>✅</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Liveness Verified</span>
+          <span style={{ fontSize: 11, color: T.txt3, marginLeft: "auto" }}>{new Date(value.completedAt).toLocaleString()}</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {value.captures.map((c, i) => (
+            <div key={i} style={{ width: 56, height: 56, borderRadius: 6, overflow: "hidden", border: `1px solid ${T.bdr}` }}>
+              <img src={c.image} alt={c.challenge} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+          ))}
+        </div>
+        <button onClick={() => { onChange(null); }} style={{ marginTop: 8, fontSize: 11, color: T.txt3, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>Redo verification</button>
+      </div>
+    );
+  }
+
+  if (!active) {
+    return (
+      <div
+        onClick={startLiveness}
+        style={{
+          border: `1.5px dashed ${T.bdrA}`, borderRadius: 8, padding: "20px", cursor: "pointer",
+          textAlign: "center", background: T.bg2, transition: "all .2s",
+        }}
+      >
+        <div style={{ fontSize: 24, marginBottom: 6 }}>📷</div>
+        <div style={{ fontSize: 13, color: T.txt2, fontWeight: 500 }}>Start Face Liveness Verification</div>
+        <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 4 }}>Camera access required — 4 quick challenges</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ border: `1px solid ${T.bdrFocus}`, borderRadius: 10, padding: 16, background: T.bg1 }}>
+      <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", marginBottom: 12, background: "#000" }}>
+        <video ref={videoRef} style={{ width: "100%", display: "block", transform: "scaleX(-1)" }} playsInline muted />
+        <canvas ref={canvasRef} style={{ display: "none" }} />
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0, padding: "12px",
+          background: "linear-gradient(transparent, rgba(0,0,0,0.8))",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", textAlign: "center" }}>
+            {CHALLENGES[step]}
+          </div>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", textAlign: "center", marginTop: 2 }}>
+            Challenge {step + 1} of {CHALLENGES.length}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+        <button
+          onClick={handleCapture}
+          disabled={countdown > 0}
+          style={{
+            padding: "8px 24px", borderRadius: 8, border: "none", cursor: countdown > 0 ? "default" : "pointer",
+            background: countdown > 0 ? T.bg3 : T.grad, color: "#fff", fontSize: 13, fontWeight: 600,
+          }}
+        >
+          {countdown > 0 ? `Wait ${countdown}s...` : "Capture"}
+        </button>
+        <button
+          onClick={stopCamera}
+          style={{
+            padding: "8px 16px", borderRadius: 8, border: `1px solid ${T.bdrA}`,
+            background: T.bg3, color: T.txt3, fontSize: 12, cursor: "pointer",
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 4, justifyContent: "center", marginTop: 10 }}>
+        {CHALLENGES.map((_, i) => (
+          <div key={i} style={{
+            width: 8, height: 8, borderRadius: "50%",
+            background: i < step ? T.green : i === step ? T.blue : T.bg3,
+          }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InfoBox({ type = "info", children }) {
   const cfg = {
     info:  { bg: "linear-gradient(180deg, rgba(102,103,171,0.08) 0%, rgba(102,103,171,0.03) 100%)", bdr: "rgba(102,103,171,0.2)", icon: "ℹ", col: T.blueL },
@@ -623,6 +791,21 @@ function renderStep(step, data, set) {
         <Textarea value={v(`bo${idx}_addr`)} onChange={val => set(`bo${idx}_addr`, val)} placeholder="Full residential address including PIN / ZIP code and country" rows={2} />
       </Field>
       <Field label="Contact Email" required={required}><Input type="email" value={v(`bo${idx}_email`)} onChange={val => set(`bo${idx}_email`, val)} placeholder="beneficial.owner@company.com" /></Field>
+      <Divider label="Identity Verification" />
+      <G>
+        <Field label="Photo ID — Front (Passport / Aadhaar / Driving Licence)" required={required} half>
+          <FileUpload value={v(`bo${idx}_idFront`)} onChange={val => set(`bo${idx}_idFront`, val)} hint="Clear colour scan — JPG or PNG" />
+        </Field>
+        <Field label="Photo ID — Back" required={required} half>
+          <FileUpload value={v(`bo${idx}_idBack`)} onChange={val => set(`bo${idx}_idBack`, val)} hint="Back side of the same ID document" />
+        </Field>
+      </G>
+      <Field label="Proof of Residential Address" required={required} hint="Utility bill, Aadhaar, bank statement — must be ≤3 months old">
+        <FileUpload value={v(`bo${idx}_proofAddr`)} onChange={val => set(`bo${idx}_proofAddr`, val)} hint="PDF, JPG, or PNG — ≤3 months old" />
+      </Field>
+      <Field label="Face Liveness Verification" required={required} hint="Complete a short camera-based challenge to verify your identity in real time">
+        <FaceLiveness value={v(`bo${idx}_selfie`)} onChange={val => set(`bo${idx}_selfie`, val)} />
+      </Field>
     </div>
   );
 
