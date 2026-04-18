@@ -107,45 +107,37 @@ function Field({ label, required, hint, error, children, half }) {
 }
 
 function Input({ value, onChange, placeholder, type = "text", monospace }) {
-  const ref = useRef(null);
-  const [f, setF] = useState(false);
   return (
     <input
-      ref={ref}
       type={type}
-      defaultValue={value || ""}
+      value={value || ""}
+      onChange={e => onChange?.(e.target.value)}
       placeholder={placeholder}
       className="sp-input"
       style={{
-        width: "100%", background: T.bg2, border: `1.5px solid ${f ? T.bdrFocus : T.bdr}`,
+        width: "100%", background: T.bg2, border: `1.5px solid ${T.bdr}`,
         borderRadius: 8, padding: "10px 14px", color: T.txt,
         fontSize: monospace ? 12.5 : 13.5, fontFamily: monospace ? "'IBM Plex Mono', monospace" : "'Inter', system-ui, sans-serif",
         transition: "border-color .18s, box-shadow .18s",
       }}
-      onFocus={() => setF(true)}
-      onBlur={() => { setF(false); onChange?.(ref.current.value); }}
     />
   );
 }
 
 function Textarea({ value, onChange, placeholder, rows = 3, monospace }) {
-  const ref = useRef(null);
-  const [f, setF] = useState(false);
   return (
     <textarea
-      ref={ref}
-      defaultValue={value || ""}
+      value={value || ""}
+      onChange={e => onChange?.(e.target.value)}
       placeholder={placeholder}
       rows={rows}
       className="sp-input"
       style={{
-        width: "100%", background: T.bg2, border: `1.5px solid ${f ? T.bdrFocus : T.bdr}`,
+        width: "100%", background: T.bg2, border: `1.5px solid ${T.bdr}`,
         borderRadius: 8, padding: "10px 14px", color: T.txt,
         fontSize: monospace ? 12.5 : 13.5, fontFamily: monospace ? "'IBM Plex Mono', monospace" : "'Inter', system-ui, sans-serif",
         resize: "vertical", lineHeight: 1.6, transition: "border-color .18s, box-shadow .18s",
       }}
-      onFocus={() => setF(true)}
-      onBlur={() => { setF(false); onChange?.(ref.current.value); }}
     />
   );
 }
@@ -793,10 +785,7 @@ function Sidebar({ step, setStep }) {
       <div style={{ padding: "0 24px 28px", borderBottom: `1px solid ${T.bdr}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 400, color: T.blueL, fontFamily: "'Inter', system-ui, sans-serif", letterSpacing: ".01em" }}>
-              Stable Pay
-            </div>
-            <div style={{ fontSize: 9.5, color: T.txt3, letterSpacing: ".06em" }}>KYB ONBOARDING</div>
+            <img src="/TP-logo.png" alt="Stable Pay" style={{ height: 120, display: "block", marginBottom: 4 }} />
           </div>
         </div>
         <div style={{ marginTop: 14, padding: "8px 10px", background: T.bg0, borderRadius: 7, border: `1px solid ${T.bdr}` }}>
@@ -894,7 +883,7 @@ function AIAssistant({ currentStep }) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState([{
     r: "a",
-    t: "I'm StablePay's KYB compliance assistant. I can help clarify PMLA/FIU-IND requirements, explain any field, or guide document requirements. What do you need?",
+    t: "I'm Stable Pay's KYB compliance assistant. I can help clarify PMLA/FIU-IND requirements, explain any field, or guide document requirements. What do you need?",
   }]);
   const [inp, setInp] = useState("");
   const [loading, setLoading] = useState(false);
@@ -918,7 +907,7 @@ function AIAssistant({ currentStep }) {
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
-          system: `You are a compliance expert assistant embedded in StablePay's KYB OTC onboarding portal. StablePay is a US-India cross-border stablecoin remittance company processing USDT/USDC to INR off-ramp transactions.
+          system: `You are a compliance expert assistant embedded in Stable Pay's KYB OTC onboarding portal. Stable Pay is a US-India cross-border stablecoin remittance company processing USDT/USDC to INR off-ramp transactions.
 
 The applicant is currently on: "${stepLabels[currentStep]}".
 
@@ -930,7 +919,7 @@ Your expertise covers:
 
 Be concise, authoritative, and cite specific regulations when relevant. Keep responses under 180 words.`,
           messages: [
-            ...msgs.map(m => ({ role: m.r === "a" ? "assistant" : "user", content: m.t })),
+            ...msgs.slice(1).map(m => ({ role: m.r === "a" ? "assistant" : "user", content: m.t })),
             { role: "user", content: txt },
           ],
         }),
@@ -1215,7 +1204,7 @@ function DocumentBuilder({ data, value, onChange }) {
       <p style="text-align:center;color:#555;font-size:12px;margin-bottom:20px">Date: ${formattedDate}</p>
       <p style="margin-bottom:12px"><strong>RESOLUTION OF THE BOARD OF DIRECTORS OF ${companyName.toUpperCase()}</strong></p>
       <p style="margin-bottom:12px">(passed by circulation / at a meeting held on ${formattedDate})</p>
-      <p style="margin-bottom:16px">RESOLVED THAT the following persons are hereby authorised to act as authorised signatories for the purpose of onboarding with StablePay (a product of Fincrypt LLP) for OTC stablecoin-to-INR transactions:</p>
+      <p style="margin-bottom:16px">RESOLVED THAT the following persons are hereby authorised to act as authorised signatories for the purpose of onboarding with Stable Pay (a product of Fincrypt LLP) for OTC stablecoin-to-INR transactions:</p>
       <table><thead><tr><th>Name</th><th>Designation</th><th>Email</th></tr></thead><tbody>${sigRows}</tbody></table>
       <p style="margin:16px 0">FURTHER RESOLVED THAT the above-named persons are authorised, jointly or severally, to execute any documents, agreements, or undertakings required for the completion of the KYB onboarding process.</p>
       <div class="sig-area">
@@ -1398,7 +1387,7 @@ function DocumentBuilder({ data, value, onChange }) {
               (passed by circulation / at a meeting held on {formattedDate})
             </p>
             <p style={{ fontSize: 12.5, marginBottom: 16, lineHeight: 1.7 }}>
-              RESOLVED THAT the following persons are hereby authorised to act as authorised signatories for the purpose of onboarding with StablePay (a product of Fincrypt LLP) for OTC stablecoin-to-INR transactions:
+              RESOLVED THAT the following persons are hereby authorised to act as authorised signatories for the purpose of onboarding with Stable Pay (a product of Fincrypt LLP) for OTC stablecoin-to-INR transactions:
             </p>
 
             {/* Signatories Table */}
@@ -1917,13 +1906,16 @@ const COUNTRIES = ["India","United States","United Kingdom","Singapore","United 
 const LEGAL_FORMS = ["Private Limited Company (Pvt. Ltd.)","Public Limited Company (Ltd.)","Limited Liability Company (LLC)","Limited Liability Partnership (LLP)","Sole Proprietorship","Partnership Firm","Foreign Company Branch","Society / Trust","Other"];
 const TOKENS = ["USDT (TRC-20)","USDT (ERC-20)","USDC (ERC-20)","USDC (Solana)","BUSD","Multiple Stablecoins","BTC","ETH"];
 
-function renderStep(step, data, set, boCount, setBoCount) {
-  const v = k => data[k];
-  const G = ({ children, cols = 2 }) => (
+function G({ children, cols = 2 }) {
+  return (
     <div className="sp-grid" style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: "20px 20px" }}>
       {children}
     </div>
   );
+}
+
+function renderStep(step, data, set, boCount, setBoCount) {
+  const v = k => data[k];
 
   /* helpers for UBO blocks */
   const UBOBlock = (idx, required) => (
@@ -1994,8 +1986,8 @@ function renderStep(step, data, set, boCount, setBoCount) {
           </Field>
         </G>
         <Divider label="Internal Use" />
-        <Field label="StablePay Point of Contact" hint="Name of your StablePay relationship manager or referral, if known">
-          <Input value={v("spPOC")} onChange={val => set("spPOC", val)} placeholder="Name of your StablePay contact" />
+        <Field label="Stable Pay Point of Contact" hint="Name of your Stable Pay relationship manager or referral, if known">
+          <Input value={v("spPOC")} onChange={val => set("spPOC", val)} placeholder="Name of your Stable Pay contact" />
         </Field>
         <Field label="How did you hear about Stable Pay?">
           <Select value={v("referralSource")} onChange={val => set("referralSource", val)} options={["Direct Outreach","Referral","LinkedIn / Social Media","Industry Event","Other"]} />
@@ -2046,8 +2038,8 @@ function renderStep(step, data, set, boCount, setBoCount) {
     case 2: return (
       <>
         <SectionHead label="Step 03 / 10" title="Business Profile" description="Describe your business model, the nature of your transactions with Stable Pay, and the jurisdictions you serve." compliance={["FIU-IND","FATF"]} />
-        <Field label="Description of Business Activities" required hint="Explain your core business model, revenue sources, and specifically how you intend to use StablePay's OTC service">
-          <Textarea value={v("biz_desc")} onChange={val => set("biz_desc", val)} placeholder="Describe your core business model, revenue sources, and how you intend to use StablePay's OTC service." rows={5} />
+        <Field label="Description of Business Activities" required hint="Explain your core business model, revenue sources, and specifically how you intend to use Stable Pay's OTC service">
+          <Textarea value={v("biz_desc")} onChange={val => set("biz_desc", val)} placeholder="Describe your core business model, revenue sources, and how you intend to use Stable Pay's OTC service." rows={5} />
         </Field>
         <G>
           <Field label="Services / Products Offered" required>
@@ -2184,7 +2176,7 @@ function renderStep(step, data, set, boCount, setBoCount) {
       <>
         <SectionHead label="Step 06 / 10" title="Source of Funds & Source of Wealth" description="Explain the origin of business operating funds and the wealth of each beneficial owner. Documentary evidence is required." compliance={["PMLA","FIU-IND","FATF R.10"]} />
         <Divider label="Business — Source of Funds" />
-        <Field label="How does the company fund its operations?" required hint="Describe the origin of capital used to operate the business and execute transactions through StablePay">
+        <Field label="How does the company fund its operations?" required hint="Describe the origin of capital used to operate the business and execute transactions through Stable Pay">
           <Textarea value={v("sof_biz")} onChange={val => set("sof_biz", val)} placeholder="Describe the origin of the capital used to operate the business — investor funding, business revenues, retained earnings, loans, etc. Be specific." rows={4} />
         </Field>
         <Field label="Upload Supporting Document — Business Source of Funds" required hint="Accepted: audited financial statements (most recent FY), CA-certified accounts, investor term sheets / funding agreements, bank statements showing capital inflow, revenue contracts">
@@ -2238,7 +2230,7 @@ function renderStep(step, data, set, boCount, setBoCount) {
             { k: "sanc2", l: "The entity does not conduct business with or on behalf of any sanctioned person, entity, or country, including FATF high-risk jurisdictions (currently: Democratic People's Republic of Korea, Iran, Myanmar) and OFAC comprehensively sanctioned territories." },
             { k: "sanc3", l: "The entity is not incorporated in, controlled by, or operating from a FATF grey-listed or black-listed jurisdiction." },
             { k: "sanc4", l: "I confirm that the entity's funds do not originate from or transit through any sanctioned jurisdiction, sanctioned financial institution, or sanctioned individual." },
-            { k: "sanc5", l: "I acknowledge that StablePay is obligated to file Suspicious Transaction Reports (STR) with FIU-IND for transactions involving persons or jurisdictions subject to international sanctions, and I consent to such reporting." },
+            { k: "sanc5", l: "I acknowledge that Stable Pay is obligated to file Suspicious Transaction Reports (STR) with FIU-IND for transactions involving persons or jurisdictions subject to international sanctions, and I consent to such reporting." },
           ].map(item => (
             <Checkbox key={item.k} label={item.l} checked={!!v(item.k)} onChange={val => set(item.k, val)} />
           ))}
@@ -2273,9 +2265,9 @@ function renderStep(step, data, set, boCount, setBoCount) {
     /* ── 7 AML/CFT PROGRAMME ── */
     case 7: return (
       <>
-        <SectionHead label="Step 08 / 10" title="AML / CFT Programme" description="StablePay is required under PMLA and FIU-IND guidelines to assess the strength of your compliance framework before establishing an OTC relationship." compliance={["FIU-IND","PMLA S.12","FATF R.18"]} />
+        <SectionHead label="Step 08 / 10" title="AML / CFT Programme" description="Stable Pay is required under PMLA and FIU-IND guidelines to assess the strength of your compliance framework before establishing an OTC relationship." compliance={["FIU-IND","PMLA S.12","FATF R.18"]} />
         <InfoBox type="warn">
-          <strong>FATF Recommendation 18 & PMLA S.12:</strong> Reporting Entities and their counterparties are expected to have adequate AML/CFT programmes. Where deficiencies are identified, StablePay reserves the right to decline onboarding or impose enhanced monitoring.
+          <strong>FATF Recommendation 18 & PMLA S.12:</strong> Reporting Entities and their counterparties are expected to have adequate AML/CFT programmes. Where deficiencies are identified, Stable Pay reserves the right to decline onboarding or impose enhanced monitoring.
         </InfoBox>
         <G>
           <Field label="Does your entity have a formal, board-approved AML/CFT Policy?" required>
@@ -2372,7 +2364,7 @@ function renderStep(step, data, set, boCount, setBoCount) {
     /* ── 9 DECLARATION ── */
     case 9: return (
       <>
-        <SectionHead label="Step 10 / 10" title="Declaration & Certification" description="By submitting this application, you certify the accuracy of all information and consent to StablePay's verification and monitoring processes." compliance={["PMLA S.12","FIU-IND"]} />
+        <SectionHead label="Step 10 / 10" title="Declaration & Certification" description="By submitting this application, you certify the accuracy of all information and consent to Stable Pay's verification and monitoring processes." compliance={["PMLA S.12","FIU-IND"]} />
         <InfoBox type="legal">
           This application constitutes a formal declaration under the Prevention of Money Laundering Act, 2002 (PMLA) and rules made thereunder. Providing false information is an offence punishable under PMLA and the Indian Penal Code / Bharatiya Nyaya Sanhita.
         </InfoBox>
@@ -2381,9 +2373,9 @@ function renderStep(step, data, set, boCount, setBoCount) {
           {[
             "I confirm that all information provided in this form is accurate, complete, and not misleading, to the best of my knowledge and belief.",
             "I confirm that all documents submitted are genuine, unaltered, and currently valid. I understand that submission of forged or altered documents is a criminal offence under applicable law.",
-            "I acknowledge that StablePay is a Reporting Entity / counterparty subject to PMLA obligations and may file Suspicious Transaction Reports (STR), Currency Transaction Reports (CTR), or other regulatory reports with FIU-IND based on transactions processed through the platform.",
-            "I consent to StablePay conducting ongoing due diligence, including sanctions screening, adverse media checks, and periodic KYB reviews, and I undertake to provide updated information upon request.",
-            "I undertake to promptly notify StablePay of any material changes to the information provided, including changes in ownership, control, business activities, regulatory status, or sanctions exposure.",
+            "I acknowledge that Stable Pay is a Reporting Entity / counterparty subject to PMLA obligations and may file Suspicious Transaction Reports (STR), Currency Transaction Reports (CTR), or other regulatory reports with FIU-IND based on transactions processed through the platform.",
+            "I consent to Stable Pay conducting ongoing due diligence, including sanctions screening, adverse media checks, and periodic KYB reviews, and I undertake to provide updated information upon request.",
+            "I undertake to promptly notify Stable Pay of any material changes to the information provided, including changes in ownership, control, business activities, regulatory status, or sanctions exposure.",
             "I confirm that the entity is not, to my knowledge, involved in facilitating money laundering, terrorist financing, proliferation financing, or any other activity prohibited under PMLA or applicable international law.",
             "I confirm I am duly authorised to submit this application on behalf of the entity named herein, and that the Board of Directors is aware of and has approved this onboarding.",
           ].map((text, i) => (
@@ -2419,64 +2411,235 @@ function renderStep(step, data, set, boCount, setBoCount) {
 ───────────────────────────────────────────── */
 const API = "/api";
 
+function authHeaders() {
+  const token = localStorage.getItem("sp_token");
+  const h = { "Content-Type": "application/json" };
+  if (token) h["Authorization"] = `Bearer ${token}`;
+  return h;
+}
+
 async function apiCreateApp(formData = {}) {
-  const r = await fetch(`${API}/applications`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ formData }) });
+  const r = await fetch(`${API}/applications`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ formData }) });
   if (!r.ok) throw new Error("Failed to create application");
   return r.json();
 }
 
 async function apiSaveDraft(id, formData) {
-  const r = await fetch(`${API}/applications/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ formData }) });
+  const r = await fetch(`${API}/applications/${id}`, { method: "PATCH", headers: authHeaders(), body: JSON.stringify({ formData }) });
   if (!r.ok) throw new Error("Failed to save draft");
   return r.json();
 }
 
 async function apiSubmitApp(id, submissionMeta) {
-  const r = await fetch(`${API}/applications/${id}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ submissionMeta }) });
+  const r = await fetch(`${API}/applications/${id}/submit`, { method: "POST", headers: authHeaders(), body: JSON.stringify({ submissionMeta }) });
   if (!r.ok) throw new Error("Failed to submit application");
   return r.json();
+}
+
+async function apiSendOTP(email) {
+  const r = await fetch(`${API}/applicant/send-otp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Failed to send OTP");
+  return data;
+}
+
+async function apiVerifyOTP(email, otp) {
+  const r = await fetch(`${API}/applicant/verify-otp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, otp }) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Verification failed");
+  return data;
+}
+
+async function apiResendOTP(email) {
+  const r = await fetch(`${API}/applicant/resend-otp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || "Failed to resend OTP");
+  return data;
+}
+
+async function apiGetMe() {
+  const r = await fetch(`${API}/applicant/me`, { headers: authHeaders() });
+  if (!r.ok) throw new Error("Not authenticated");
+  return r.json();
+}
+
+async function apiLoadMyApp(id) {
+  const r = await fetch(`${API}/applications/mine/${id}`, { headers: authHeaders() });
+  if (!r.ok) throw new Error("App not found");
+  return r.json();
+}
+
+async function apiUploadDoc(appId, fieldKey, file) {
+  const token = localStorage.getItem("sp_token");
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("fieldKey", fieldKey);
+  const h = {};
+  if (token) h["Authorization"] = `Bearer ${token}`;
+  const r = await fetch(`${API}/documents/upload/${appId}`, { method: "POST", headers: h, body: fd });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.error || `Upload failed (${r.status})`);
+  }
+  return r.json();
+}
+
+function collectPendingUploads(data) {
+  const pending = [];
+  for (const [key, val] of Object.entries(data || {})) {
+    if (val && typeof val === "object" && val.file instanceof File && !val.docId) {
+      pending.push({ key, file: val.file, name: val.name || val.file.name });
+    }
+  }
+  return pending;
 }
 
 /* ─────────────────────────────────────────────
    MAIN APP
 ───────────────────────────────────────────── */
 export default function App() {
+  // Clear any admin token from localStorage (legacy cleanup)
+  useEffect(() => { localStorage.removeItem("sp_admin_token"); }, []);
+
+  const [user, setUser] = useState(null);
+  const [userApps, setUserApps] = useState([]);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authStep, setAuthStep] = useState("email"); // "email" | "otp"
+  const [authError, setAuthError] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpResendTimer, setOtpResendTimer] = useState(0);
+
   const [appId, setAppId] = useState(null);
   const [refCode, setRefCode] = useState("");
   const [step, setStep] = useState(0);
   const [data, setData] = useState({});
   const [submitted, setSubmitted] = useState(false);
-  const [loadingApp, setLoadingApp] = useState(true);
+  const [loadingApp, setLoadingApp] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [boCount, setBoCount] = useState(3);
+  const [uploadStatus, setUploadStatus] = useState({ active: false, progress: 0, total: 0, label: "", error: "" });
   const contentRef = useRef();
 
-  // Parse app ID from URL hash: #app/UUID
+  // Check for existing session on mount
   useEffect(() => {
-    const hash = window.location.hash;
-    const match = hash.match(/#app\/([a-f0-9-]+)/i);
-    if (match) {
-      setAppId(match[1]);
-      // Load existing draft
-      fetch(`${API}/applications/${match[1]}`, { headers: { "Content-Type": "application/json" } })
-        .then(r => r.ok ? r.json() : Promise.reject())
-        .then(app => {
-          setData(typeof app.form_data === "string" ? JSON.parse(app.form_data) : (app.form_data || {}));
-          setRefCode(app.ref_code || "");
-          if (app.status !== "draft") setSubmitted(true);
-          setLoadingApp(false);
-        })
-        .catch(() => {
-          // App not found — show landing
-          setAppId(null);
-          setLoadingApp(false);
-        });
-    } else {
-      setLoadingApp(false);
-    }
+    const token = localStorage.getItem("sp_token");
+    if (!token) { setAuthLoading(false); return; }
+    apiGetMe()
+      .then(({ user: u, applications }) => {
+        setUser(u);
+        setUserApps(applications || []);
+        // Check URL hash for direct app link
+        const hash = window.location.hash;
+        const match = hash.match(/#app\/([a-f0-9-]+)/i);
+        if (match) loadApp(match[1]);
+        setAuthLoading(false);
+      })
+      .catch(() => {
+        localStorage.removeItem("sp_token");
+        setAuthLoading(false);
+      });
   }, []);
 
+  function loadApp(id) {
+    setLoadingApp(true);
+    apiLoadMyApp(id)
+      .then(app => {
+        setAppId(app.id);
+        setData(typeof app.form_data === "string" ? JSON.parse(app.form_data) : (app.form_data || {}));
+        setRefCode(app.ref_code || "");
+        if (app.status !== "draft") setSubmitted(true);
+        window.location.hash = `app/${app.id}`;
+        setLoadingApp(false);
+      })
+      .catch(() => {
+        setLoadingApp(false);
+        alert("Application not found or access denied.");
+      });
+  }
+
+  async function handleSendOTP(e) {
+    e.preventDefault();
+    setAuthError("");
+    setOtpSending(true);
+    try {
+      await apiSendOTP(authEmail);
+      setAuthStep("otp");
+      setOtpResendTimer(60);
+      const interval = setInterval(() => {
+        setOtpResendTimer(t => {
+          if (t <= 1) { clearInterval(interval); return 0; }
+          return t - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setAuthError(err.message);
+    }
+    setOtpSending(false);
+  }
+
+  async function handleVerifyOTP(e) {
+    e.preventDefault();
+    setAuthError("");
+    setOtpSending(true);
+    try {
+      const result = await apiVerifyOTP(authEmail, otpCode);
+      localStorage.setItem("sp_token", result.token);
+      setUser(result.user);
+      const me = await apiGetMe();
+      setUserApps(me.applications || []);
+      const hash = window.location.hash;
+      const match = hash.match(/#app\/([a-f0-9-]+)/i);
+      if (match) loadApp(match[1]);
+    } catch (err) {
+      setAuthError(err.message);
+    }
+    setOtpSending(false);
+  }
+
+  async function handleResendOTP() {
+    setAuthError("");
+    try {
+      await apiResendOTP(authEmail);
+      setOtpResendTimer(60);
+      const interval = setInterval(() => {
+        setOtpResendTimer(t => {
+          if (t <= 1) { clearInterval(interval); return 0; }
+          return t - 1;
+        });
+      }, 1000);
+    } catch (err) {
+      setAuthError(err.message);
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("sp_token");
+    setUser(null);
+    setUserApps([]);
+    setAppId(null);
+    setData({});
+    setStep(0);
+    setSubmitted(false);
+    window.location.hash = "";
+  }
+
   const set = useCallback((k, v) => setData(d => ({ ...d, [k]: v })), []);
+
+  // Auto-save draft every 5 seconds when data changes
+  const lastSavedRef = useRef(JSON.stringify({}));
+  useEffect(() => {
+    if (!appId || submitted) return;
+    const timer = setInterval(() => {
+      const current = JSON.stringify(data);
+      if (current !== lastSavedRef.current && Object.keys(data).length > 0) {
+        lastSavedRef.current = current;
+        apiSaveDraft(appId, data).catch(() => {});
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [appId, data, submitted]);
 
   const goTo = (s) => { setStep(s); contentRef.current?.scrollTo({ top: 0, behavior: "smooth" }); };
 
@@ -2486,6 +2649,7 @@ export default function App() {
       const app = await apiCreateApp({});
       setAppId(app.id);
       setRefCode(app.ref_code);
+      setUserApps(prev => [{ id: app.id, ref_code: app.ref_code, status: "draft", created_at: new Date().toISOString() }, ...prev]);
       window.location.hash = `app/${app.id}`;
       setLoadingApp(false);
     } catch {
@@ -2503,19 +2667,135 @@ export default function App() {
   }, [appId]);
 
   // Loading state
-  if (loadingApp) {
+  if (authLoading || loadingApp) {
     return (
       <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif" }}>
         <style>{GLOBAL_CSS}</style>
         <div style={{ textAlign: "center" }}>
           <div style={{ width: 36, height: 36, border: `3px solid ${T.bdr}`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
-          <div style={{ fontSize: 14, color: T.txt2 }}>Loading application...</div>
+          <div style={{ fontSize: 14, color: T.txt2 }}>Loading...</div>
         </div>
       </div>
     );
   }
 
-  // Landing page — no app selected
+  // Not logged in — show email OTP flow
+  if (!user) {
+    return (
+      <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 24, position: "relative", overflow: "hidden" }}>
+        <style>{GLOBAL_CSS}</style>
+        <div className="sp-grid-bg" style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
+        <div className="sp-noise" />
+        <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.2) 0%, transparent 70%)", top: -150, right: -100, filter: "blur(80px)" }} />
+        <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.15) 0%, transparent 70%)", bottom: -100, left: -100, filter: "blur(80px)" }} />
+
+        <div className="sp-fade" style={{ maxWidth: 440, width: "100%", textAlign: "center", position: "relative", zIndex: 1 }}>
+          <div style={{ marginBottom: 32 }}>
+            <img src="/TP-logo.png" alt="Stable Pay" style={{ height: 200, marginBottom: 12 }} />
+          </div>
+
+          <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", padding: "40px 36px", backdropFilter: "blur(10px)", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.5)" }}>
+
+            {authStep === "email" ? (
+              <>
+                <h1 style={{ fontSize: 20, fontWeight: 600, color: T.txt, marginBottom: 6 }}>Sign In</h1>
+                <p style={{ fontSize: 13, color: T.txt3, marginBottom: 24 }}>
+                  Enter your email to receive a verification code
+                </p>
+
+                {authError && (
+                  <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "#f87171", textAlign: "left" }}>
+                    {authError}
+                  </div>
+                )}
+
+                <form onSubmit={handleSendOTP} style={{ textAlign: "left" }}>
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ display: "block", fontSize: 11.5, color: T.txt3, marginBottom: 5, letterSpacing: ".04em" }}>EMAIL ADDRESS</label>
+                    <input
+                      type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} required autoFocus
+                      placeholder="you@company.com"
+                      style={{ width: "100%", padding: "12px 14px", background: T.bg2, border: `1px solid ${T.bdr}`, borderRadius: 8, color: T.txt, fontSize: 14, outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+
+                  <button type="submit" disabled={otpSending} className="sp-btn-primary" style={{
+                    width: "100%", padding: "13px", borderRadius: 10, border: "none",
+                    background: otpSending ? T.bg3 : T.grad, color: "#fff", fontSize: 14.5, fontWeight: 600,
+                    cursor: otpSending ? "wait" : "pointer", boxShadow: `0 4px 20px ${T.blueGlow}`,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  }}>
+                    {otpSending ? "Sending..." : "Send Verification Code"}
+                    {!otpSending && <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M9 4L13 8L9 12" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <h1 style={{ fontSize: 20, fontWeight: 600, color: T.txt, marginBottom: 6 }}>Enter Code</h1>
+                <p style={{ fontSize: 13, color: T.txt3, marginBottom: 6 }}>
+                  We sent a 6-digit code to
+                </p>
+                <p style={{ fontSize: 13.5, color: T.blueL, fontWeight: 500, marginBottom: 24 }}>
+                  {authEmail}
+                </p>
+
+                {authError && (
+                  <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: "#f87171", textAlign: "left" }}>
+                    {authError}
+                  </div>
+                )}
+
+                <form onSubmit={handleVerifyOTP} style={{ textAlign: "left" }}>
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ display: "block", fontSize: 11.5, color: T.txt3, marginBottom: 5, letterSpacing: ".04em" }}>VERIFICATION CODE</label>
+                    <input
+                      type="text" value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      required autoFocus maxLength={6} inputMode="numeric" autoComplete="one-time-code"
+                      placeholder="000000"
+                      style={{ width: "100%", padding: "14px", background: T.bg2, border: `1px solid ${T.bdr}`, borderRadius: 8, color: T.txt, fontSize: 24, fontWeight: 700, letterSpacing: 8, textAlign: "center", outline: "none", boxSizing: "border-box", fontFamily: "'IBM Plex Mono', monospace" }}
+                    />
+                  </div>
+
+                  <button type="submit" disabled={otpSending || otpCode.length !== 6} className="sp-btn-primary" style={{
+                    width: "100%", padding: "13px", borderRadius: 10, border: "none",
+                    background: (otpSending || otpCode.length !== 6) ? T.bg3 : T.grad, color: "#fff", fontSize: 14.5, fontWeight: 600,
+                    cursor: (otpSending || otpCode.length !== 6) ? "not-allowed" : "pointer",
+                    boxShadow: otpCode.length === 6 ? `0 4px 20px ${T.blueGlow}` : "none",
+                  }}>
+                    {otpSending ? "Verifying..." : "Verify & Sign In"}
+                  </button>
+                </form>
+
+                <div style={{ marginTop: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+                  <button
+                    onClick={() => { setAuthStep("email"); setOtpCode(""); setAuthError(""); }}
+                    style={{ background: "none", border: "none", color: T.txt3, fontSize: 12.5, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    Change email
+                  </button>
+                  <span style={{ color: T.bdr }}>|</span>
+                  {otpResendTimer > 0 ? (
+                    <span style={{ fontSize: 12.5, color: T.txt3 }}>Resend in {otpResendTimer}s</span>
+                  ) : (
+                    <button onClick={handleResendOTP} style={{ background: "none", border: "none", color: T.blueL, fontSize: 12.5, cursor: "pointer", fontFamily: "inherit" }}>
+                      Resend code
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+
+          <p style={{ fontSize: 11.5, color: T.txt3, marginTop: 24 }}>
+            For any help, contact <a href="mailto:compliance@stablepay.global" style={{ color: T.blueL, textDecoration: "none" }}>compliance@stablepay.global</a>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Logged in but no app selected — show dashboard
   if (!appId && !submitted) {
     return (
       <div style={{ minHeight: "100vh", background: T.bg0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', system-ui, sans-serif", padding: 24, position: "relative", overflow: "hidden" }}>
@@ -2525,47 +2805,86 @@ export default function App() {
         <div style={{ position: "absolute", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.2) 0%, transparent 70%)", top: -150, right: -100, filter: "blur(80px)" }} />
         <div style={{ position: "absolute", width: 400, height: 400, borderRadius: "50%", background: "radial-gradient(circle, rgba(102,103,171,0.15) 0%, transparent 70%)", bottom: -100, left: -100, filter: "blur(80px)" }} />
 
-        <div className="sp-fade" style={{ maxWidth: 480, width: "100%", textAlign: "center", position: "relative", zIndex: 1 }}>
-          {/* Logo */}
-          <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: 22, fontWeight: 700, color: T.txt, letterSpacing: "-.03em" }}>StablePay</div>
-            <div style={{ fontSize: 12, color: T.txt3, marginTop: 4, letterSpacing: ".08em", textTransform: "uppercase" }}>OTC KYB Onboarding</div>
+        <div className="sp-fade" style={{ maxWidth: 520, width: "100%", position: "relative", zIndex: 1 }}>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
+            <div>
+              <img src="/TP-logo.png" alt="Stable Pay" style={{ height: 40 }} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 12, color: T.txt3 }}>{user.email}</span>
+              <button onClick={logout} style={{ background: T.bg3, border: `1px solid ${T.bdr}`, borderRadius: 6, padding: "5px 12px", color: T.txt3, fontSize: 11.5, cursor: "pointer", fontFamily: "inherit" }}>
+                Sign Out
+              </button>
+            </div>
           </div>
 
           {/* Card */}
-          <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", padding: "40px 36px", backdropFilter: "blur(10px)", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.5)" }}>
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: T.blueGlow, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" stroke={T.blueL} strokeWidth="1.5" strokeLinejoin="round"/><path d="M12 12V22M12 12L3 7M12 12L21 7" stroke={T.blueL} strokeWidth="1.5"/></svg>
-            </div>
-            <h1 style={{ fontSize: 20, fontWeight: 600, color: T.txt, marginBottom: 8 }}>Know Your Business</h1>
-            <p style={{ fontSize: 13.5, color: T.txt3, lineHeight: 1.7, marginBottom: 28 }}>
-              Complete this compliance form to onboard as a StablePay OTC counterparty. Your progress is auto-saved and you will receive a unique link to resume at any time.
+          <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)", borderRadius: 20, border: "1px solid rgba(255,255,255,0.08)", padding: "36px 32px", backdropFilter: "blur(10px)", boxShadow: "0 20px 50px -10px rgba(0,0,0,0.5)" }}>
+            <h1 style={{ fontSize: 20, fontWeight: 600, color: T.txt, marginBottom: 6 }}>Your Applications</h1>
+            <p style={{ fontSize: 13, color: T.txt3, marginBottom: 24 }}>
+              Start a new KYB application or continue an existing one.
             </p>
 
             <button
               onClick={createNewApplication}
               className="sp-btn-primary"
               style={{
-                width: "100%", padding: "14px", borderRadius: 10, border: "none",
+                width: "100%", padding: "13px", borderRadius: 10, border: "none",
                 background: T.grad, color: "#fff", fontSize: 14.5, fontWeight: 600, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: `0 4px 20px ${T.blueGlow}`,
+                boxShadow: `0 4px 20px ${T.blueGlow}`, marginBottom: 20,
               }}
             >
               Start New Application
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8H13M9 4L13 8L9 12" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/></svg>
             </button>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "24px 0" }}>
-              <div style={{ flex: 1, height: 1, background: T.bdr }} />
-              <span style={{ fontSize: 11, color: T.txt3 }}>or</span>
-              <div style={{ flex: 1, height: 1, background: T.bdr }} />
-            </div>
-
-            <p style={{ fontSize: 12.5, color: T.txt3, marginBottom: 10 }}>Already have a link? Paste it in your browser to resume your application.</p>
+            {userApps.length > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: T.txt3, letterSpacing: ".06em", marginBottom: 10 }}>PREVIOUS APPLICATIONS</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {userApps.map(app => (
+                    <div
+                      key={app.id}
+                      onClick={() => { if (app.status === "draft") loadApp(app.id); }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "12px 16px", background: T.bg2, borderRadius: 10,
+                        border: `1px solid ${T.bdr}`, cursor: app.status === "draft" ? "pointer" : "default",
+                        transition: "border-color .2s",
+                      }}
+                      onMouseEnter={e => { if (app.status === "draft") e.currentTarget.style.borderColor = T.bdrFocus; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = T.bdr; }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 13, color: T.txt, fontWeight: 500 }}>
+                          {app.company_name || app.ref_code || "Untitled"}
+                        </div>
+                        <div style={{ fontSize: 11, color: T.txt3, marginTop: 3 }}>
+                          {new Date(app.updated_at || app.created_at).toLocaleDateString()} &middot; {app.ref_code}
+                        </div>
+                      </div>
+                      <div style={{
+                        fontSize: 10.5, padding: "3px 10px", borderRadius: 20, fontWeight: 500, letterSpacing: ".03em",
+                        ...(app.status === "draft"
+                          ? { background: "rgba(102,103,171,0.15)", color: T.blueL }
+                          : app.status === "pending_review"
+                          ? { background: "rgba(234,179,8,0.15)", color: "#eab308" }
+                          : app.status === "approved"
+                          ? { background: "rgba(34,197,94,0.15)", color: "#22c55e" }
+                          : { background: "rgba(239,68,68,0.15)", color: "#ef4444" }),
+                      }}>
+                        {app.status === "draft" ? "Draft" : app.status === "pending_review" ? "Under Review" : app.status === "approved" ? "Approved" : app.status === "rejected" ? "Rejected" : app.status}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <p style={{ fontSize: 11.5, color: T.txt3, marginTop: 24 }}>
+          <p style={{ fontSize: 11.5, color: T.txt3, marginTop: 24, textAlign: "center" }}>
             For any help, contact <a href="mailto:compliance@stablepay.global" style={{ color: T.blueL, textDecoration: "none" }}>compliance@stablepay.global</a>
           </p>
         </div>
@@ -2602,7 +2921,7 @@ export default function App() {
               </div>
             ))}
           </div>
-          <p style={{ fontSize: 12, color: T.txt3 }}>Please notify your StablePay point of contact that your KYB submission is complete.</p>
+          <p style={{ fontSize: 12, color: T.txt3 }}>Please notify your Stable Pay point of contact that your KYB submission is complete.</p>
         </div>
       </div>
     );
@@ -2633,7 +2952,6 @@ export default function App() {
           padding: "14px 40px", display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12.5, color: T.txt3 }}>OTC KYB Onboarding</span>
             <span style={{ color: T.bdrA }}>/</span>
             <span style={{ fontSize: 12.5, color: T.txt2, fontWeight: 500 }}>{STEPS[step].label}</span>
           </div>
@@ -2645,10 +2963,10 @@ export default function App() {
                 {linkCopied ? "Copied!" : "Copy link"}
               </button>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 5, height: 5, borderRadius: "50%", background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
-              <span style={{ fontSize: 11, color: T.txt3 }}>Secure</span>
-            </div>
+            {user && <span style={{ fontSize: 11, color: T.txt3 }}>{user.email}</span>}
+            <button onClick={logout} style={{ fontSize: 11, color: T.txt3, background: T.bg3, border: `1px solid ${T.bdr}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: "inherit" }}>
+              Sign Out
+            </button>
           </div>
         </div>
 
@@ -2720,6 +3038,7 @@ export default function App() {
             </button>
           ) : (
             <button
+              disabled={uploadStatus.active}
               onClick={async () => {
                 const meta = {
                   submittedAt: new Date().toISOString(),
@@ -2736,30 +3055,69 @@ export default function App() {
                   const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 8000, maximumAge: 0 }));
                   meta.geo = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy, capturedAt: new Date().toISOString() };
                 } catch (e) { meta.geo = { error: e.message || "Denied" }; }
-                set("_submissionMeta", meta);
+
+                let workingData = { ...data, _submissionMeta: meta };
                 if (appId) {
+                  const pending = collectPendingUploads(workingData);
+                  if (pending.length > 0) {
+                    setUploadStatus({ active: true, progress: 0, total: pending.length, label: pending[0].name, error: "" });
+                    let done = 0;
+                    for (const p of pending) {
+                      setUploadStatus(s => ({ ...s, progress: done, label: p.name }));
+                      try {
+                        const uploaded = await apiUploadDoc(appId, p.key, p.file);
+                        workingData = { ...workingData, [p.key]: { name: p.name, docId: uploaded.id, uploaded: true, size: uploaded.size_bytes } };
+                        done++;
+                      } catch (err) {
+                        setUploadStatus({ active: false, progress: done, total: pending.length, label: "", error: `Failed to upload "${p.name}": ${err.message}` });
+                        return;
+                      }
+                    }
+                    setUploadStatus({ active: false, progress: done, total: pending.length, label: "", error: "" });
+                    setData(workingData);
+                  }
+
                   try {
-                    await apiSaveDraft(appId, { ...data, _submissionMeta: meta });
+                    await apiSaveDraft(appId, workingData);
                     await apiSubmitApp(appId, meta);
-                  } catch {}
+                  } catch (err) {
+                    setUploadStatus(s => ({ ...s, error: `Submit failed: ${err.message}` }));
+                    return;
+                  }
                 }
+                set("_submissionMeta", meta);
                 setSubmitted(true);
               }}
               className="sp-btn-primary"
               style={{
                 padding: "10px 28px", borderRadius: 8, border: "none",
-                background: "linear-gradient(135deg, #00C896, #009B72)",
-                color: "#fff", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                background: uploadStatus.active ? "#6b6b6b" : "linear-gradient(135deg, #00C896, #009B72)",
+                color: "#fff", fontSize: 13.5, fontWeight: 600,
+                cursor: uploadStatus.active ? "not-allowed" : "pointer",
                 fontFamily: "'Inter', system-ui, sans-serif", transition: "all .2s",
-                boxShadow: "0 4px 16px rgba(0,200,150,.3)",
+                boxShadow: uploadStatus.active ? "none" : "0 4px 16px rgba(0,200,150,.3)",
                 display: "flex", alignItems: "center", gap: 8,
               }}
             >
-              Submit Application
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7H12M8 3L12 7L8 11" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {uploadStatus.active ? (
+                <>
+                  <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #fff", borderTopColor: "transparent", animation: "spin .8s linear infinite" }} />
+                  Uploading {uploadStatus.progress + 1} / {uploadStatus.total}…
+                </>
+              ) : (
+                <>
+                  Submit Application
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7H12M8 3L12 7L8 11" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </>
+              )}
             </button>
           )}
         </div>
+        {uploadStatus.error && (
+          <div style={{ margin: "0 16px 12px", padding: "10px 14px", borderRadius: 8, background: "rgba(220,60,60,0.1)", border: "1px solid rgba(220,60,60,0.3)", color: "#ff8888", fontSize: 12 }}>
+            {uploadStatus.error}
+          </div>
+        )}
       </div>
 
       <AIAssistant currentStep={step} />
