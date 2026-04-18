@@ -32,53 +32,6 @@ const CSS = `
   .sp-input:focus{outline:none;border-color:${T.bdrFocus}!important;box-shadow:0 0 0 2px rgba(108,109,181,0.12)!important;}
 `;
 
-/* ─────────────────────────────────────────────
-   GOOGLE DRIVE EXPORT
-   Uploads KYB documents to the admin's personal Drive
-   via Google Identity Services (OAuth2 token client).
-   Requires VITE_GOOGLE_CLIENT_ID at build time.
-───────────────────────────────────────────── */
-const GOOGLE_CLIENT_ID = import.meta.env?.VITE_GOOGLE_CLIENT_ID || "";
-const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
-
-function requestDriveAccessToken() {
-  return new Promise((resolve, reject) => {
-    if (!window.google?.accounts?.oauth2) return reject(new Error("Google Identity Services not loaded — refresh and try again"));
-    if (!GOOGLE_CLIENT_ID) return reject(new Error("Google OAuth client ID not configured (VITE_GOOGLE_CLIENT_ID)"));
-    const client = window.google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GOOGLE_DRIVE_SCOPE,
-      callback: (r) => r.access_token ? resolve(r.access_token) : reject(new Error(r.error_description || r.error || "Authorization failed")),
-      error_callback: (e) => reject(new Error(e?.message || "Authorization cancelled")),
-    });
-    client.requestAccessToken({ prompt: "" });
-  });
-}
-
-async function driveCreateFolder(accessToken, name) {
-  const res = await fetch("https://www.googleapis.com/drive/v3/files?fields=id,webViewLink", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder" }),
-  });
-  if (!res.ok) throw new Error(`Drive folder create failed (${res.status})`);
-  return res.json();
-}
-
-async function driveUploadFile(accessToken, folderId, fileName, blob) {
-  const metadata = { name: fileName, parents: [folderId] };
-  const form = new FormData();
-  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-  form.append("file", blob);
-  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
-    body: form,
-  });
-  if (!res.ok) throw new Error(`Drive upload failed for ${fileName} (${res.status})`);
-  return res.json();
-}
-
 function sanitizeFileName(s) {
   return String(s || "file").replace(/[\/\\?%*:|"<>]/g, "_").slice(0, 180);
 }
@@ -959,10 +912,10 @@ export default function AdminPanel() {
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [draftDetail, setDraftDetail] = useState(null);
   const [draftLoading, setDraftLoading] = useState(false);
-  const [driveState, setDriveState] = useState({ status: "idle", progress: 0, total: 0, folderUrl: null, error: null });
+  const [downloadState, setDownloadState] = useState({ status: "idle", progress: 0, total: 0, error: null });
 
   useEffect(() => {
-    setDriveState({ status: "idle", progress: 0, total: 0, folderUrl: null, error: null });
+    setDownloadState({ status: "idle", progress: 0, total: 0, error: null });
   }, [selectedApp?.id]);
 
   const downloadDocBlob = async (doc) => {
@@ -1000,7 +953,12 @@ export default function AdminPanel() {
 
   const downloadAllDocs = async (app, docs) => {
     const uploadable = docs.filter(d => d.hasFile && d.docId);
-    if (uploadable.length === 0) return;
+    if (uploadable.length === 0) {
+      setDownloadState({ status: "error", progress: 0, total: 0, error: "No uploaded documents" });
+      return;
+    }
+    setDownloadState({ status: "downloading", progress: 0, total: uploadable.length, error: null });
+    let done = 0;
     for (const doc of uploadable) {
       try {
         const blob = await downloadDocBlob(doc);
@@ -1008,46 +966,16 @@ export default function AdminPanel() {
         const baseLabel = `${app.ref_code || app.id} - ${doc.label}`;
         const fileName = sanitizeFileName(`${baseLabel}${ext ? "." + ext : ""}`);
         triggerBrowserDownload(blob, fileName);
-        await new Promise(r => setTimeout(r, 300));
+        done++;
+        setDownloadState(s => ({ ...s, progress: done }));
+        await new Promise(r => setTimeout(r, 400));
       } catch (err) {
         console.error("[Download] Failed for", doc.label, err);
+        setDownloadState({ status: "error", progress: done, total: uploadable.length, error: err.message || "Download failed" });
+        return;
       }
     }
-  };
-
-  const saveDocsToGoogleDrive = async (app, docs) => {
-    const uploadable = docs.filter(d => d.hasFile && d.docId);
-    if (uploadable.length === 0) {
-      setDriveState({ status: "error", progress: 0, total: 0, folderUrl: null, error: "No uploaded documents to export" });
-      return;
-    }
-    setDriveState({ status: "authorizing", progress: 0, total: uploadable.length, folderUrl: null, error: null });
-    try {
-      const accessToken = await requestDriveAccessToken();
-      setDriveState(s => ({ ...s, status: "creating-folder" }));
-      const folderLabel = sanitizeFileName(`KYB - ${app.data.co_name || "Untitled"} - ${app.ref_code || app.id}`);
-      const folder = await driveCreateFolder(accessToken, folderLabel);
-
-      const adminToken = sessionStorage.getItem("sp_admin_token");
-      let uploaded = 0;
-      setDriveState(s => ({ ...s, status: "uploading", progress: 0 }));
-      for (const doc of uploadable) {
-        const dRes = await fetch(`/api/documents/${doc.docId}/download`, {
-          headers: { Authorization: `Bearer ${adminToken}` },
-        });
-        if (!dRes.ok) throw new Error(`Could not fetch "${doc.label}" (${dRes.status})`);
-        const blob = await dRes.blob();
-        const ext = (doc.fileName || "").split(".").pop();
-        const fileName = sanitizeFileName(`${doc.label}${ext ? "." + ext : ""}`);
-        await driveUploadFile(accessToken, folder.id, fileName, blob);
-        uploaded++;
-        setDriveState(s => ({ ...s, progress: uploaded }));
-      }
-      setDriveState({ status: "done", progress: uploaded, total: uploadable.length, folderUrl: folder.webViewLink || `https://drive.google.com/drive/folders/${folder.id}`, error: null });
-    } catch (err) {
-      console.error("[Drive] Export failed:", err);
-      setDriveState(s => ({ ...s, status: "error", error: err.message || "Export failed" }));
-    }
+    setDownloadState({ status: "done", progress: done, total: uploadable.length, error: null });
   };
 
   // Admin login
@@ -1637,92 +1565,44 @@ export default function AdminPanel() {
                 <div>
                   {(() => {
                     const uploadedCount = appDocs.filter(d => d.hasFile && d.docId).length;
-                    const busy = ["authorizing", "creating-folder", "uploading"].includes(driveState.status);
+                    const busy = downloadState.status === "downloading";
                     const statusLine =
-                      driveState.status === "authorizing" ? "Waiting for Google sign-in…" :
-                      driveState.status === "creating-folder" ? "Creating Drive folder…" :
-                      driveState.status === "uploading" ? `Uploading ${driveState.progress + 1} of ${driveState.total}…` :
-                      driveState.status === "done" ? `Exported ${driveState.progress} of ${driveState.total} documents` :
-                      driveState.status === "error" ? driveState.error :
-                      `${uploadedCount} uploaded document${uploadedCount === 1 ? "" : "s"} ready to export`;
-                    const statusColor = driveState.status === "error" ? T.red : driveState.status === "done" ? T.green : T.txt3;
+                      busy ? `Downloading ${downloadState.progress + 1} of ${downloadState.total}…` :
+                      downloadState.status === "done" ? `Downloaded ${downloadState.progress} of ${downloadState.total} documents` :
+                      downloadState.status === "error" ? downloadState.error :
+                      `${uploadedCount} uploaded document${uploadedCount === 1 ? "" : "s"}`;
+                    const statusColor = downloadState.status === "error" ? T.red : downloadState.status === "done" ? T.green : T.txt3;
                     return (
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "14px 18px", background: T.bg1, border: `1px solid ${T.bdr}`, borderRadius: 12 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                           <div style={{ width: 36, height: 36, borderRadius: 8, background: T.bg3, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M8 4L2 14L5 19H13L16 14L10 4H8Z" fill="#4285F4"/><path d="M10 4L16 14H22L16.5 4H10Z" fill="#EA4335"/><path d="M22 14H16L13 19H19L22 14Z" fill="#FBBC05"/><path d="M5 19L8 14H2L5 19Z" fill="#34A853"/></svg>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1V11M8 11L5 8M8 11L11 8M2 13V15H14V13" stroke={T.txt2} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                           </div>
                           <div>
-                            <div style={{ fontSize: 13, fontWeight: 600, color: T.txt }}>Export to Google Drive</div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: T.txt }}>Documents</div>
                             <div style={{ fontSize: 11.5, color: statusColor, marginTop: 2 }}>{statusLine}</div>
                           </div>
                         </div>
-                        {driveState.status === "done" && driveState.folderUrl ? (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              onClick={() => downloadAllDocs(app, appDocs)}
-                              disabled={uploadedCount === 0}
-                              style={{
-                                padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${T.bdrA}`, background: "transparent",
-                                color: T.txt, fontSize: 12, fontWeight: 600, cursor: uploadedCount === 0 ? "not-allowed" : "pointer",
-                                display: "flex", alignItems: "center", gap: 6,
-                              }}>
-                              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1V9M7 9L4 6M7 9L10 6M1 11V13H13V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                              Download all
-                            </button>
-                            <a href={driveState.folderUrl} target="_blank" rel="noopener noreferrer" style={{
-                              padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${T.bdrA}`, background: "transparent",
-                              color: T.txt, fontSize: 12, fontWeight: 600, textDecoration: "none",
-                              display: "flex", alignItems: "center", gap: 6,
-                            }}>
-                              Open folder
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1H9V7M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-                            </a>
-                            <button onClick={() => saveDocsToGoogleDrive(app, appDocs)} style={{
-                              padding: "8px 16px", borderRadius: 8, border: "none", background: T.grad, color: "#fff",
-                              fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
-                            }}>Export again</button>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", gap: 8 }}>
-                          <button
-                            onClick={() => downloadAllDocs(app, appDocs)}
-                            disabled={busy || uploadedCount === 0}
-                            style={{
-                              padding: "10px 16px", borderRadius: 8,
-                              border: `1.5px solid ${busy || uploadedCount === 0 ? T.bdr : T.bdrA}`,
-                              background: "transparent",
-                              color: busy || uploadedCount === 0 ? T.txt3 : T.txt,
-                              fontSize: 12.5, fontWeight: 600,
-                              cursor: busy || uploadedCount === 0 ? "not-allowed" : "pointer",
-                              fontFamily: "'Inter', system-ui, sans-serif",
-                              display: "flex", alignItems: "center", gap: 8,
-                            }}>
+                        <button
+                          onClick={() => downloadAllDocs(app, appDocs)}
+                          disabled={busy || uploadedCount === 0}
+                          style={{
+                            padding: "10px 20px", borderRadius: 8, border: "none",
+                            background: busy || uploadedCount === 0 ? T.bg3 : T.grad,
+                            color: busy || uploadedCount === 0 ? T.txt3 : "#fff",
+                            fontSize: 12.5, fontWeight: 600,
+                            cursor: busy || uploadedCount === 0 ? "not-allowed" : "pointer",
+                            fontFamily: "'Inter', system-ui, sans-serif",
+                            display: "flex", alignItems: "center", gap: 8,
+                            boxShadow: busy || uploadedCount === 0 ? "none" : "0 4px 16px rgba(108,109,181,.25)",
+                          }}>
+                          {busy ? (
+                            <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #fff", borderTopColor: "transparent", animation: "spin .8s linear infinite" }} />
+                          ) : (
                             <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1V9M7 9L4 6M7 9L10 6M1 11V13H13V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            Download all
-                          </button>
-                          <button
-                            onClick={() => saveDocsToGoogleDrive(app, appDocs)}
-                            disabled={busy || uploadedCount === 0}
-                            style={{
-                              padding: "10px 20px", borderRadius: 8, border: "none",
-                              background: busy || uploadedCount === 0 ? T.bg3 : T.grad,
-                              color: busy || uploadedCount === 0 ? T.txt3 : "#fff",
-                              fontSize: 12.5, fontWeight: 600,
-                              cursor: busy || uploadedCount === 0 ? "not-allowed" : "pointer",
-                              fontFamily: "'Inter', system-ui, sans-serif",
-                              display: "flex", alignItems: "center", gap: 8,
-                              boxShadow: busy || uploadedCount === 0 ? "none" : "0 4px 16px rgba(108,109,181,.25)",
-                            }}>
-                            {busy ? (
-                              <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #fff", borderTopColor: "transparent", animation: "spin .8s linear infinite" }} />
-                            ) : (
-                              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1V9M7 9L4 6M7 9L10 6M1 11V13H13V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                            )}
-                            Save to Drive
-                          </button>
-                          </div>
-                        )}
+                          )}
+                          Download all
+                        </button>
                       </div>
                     );
                   })()}
