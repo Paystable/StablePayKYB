@@ -33,6 +33,57 @@ const CSS = `
 `;
 
 /* ─────────────────────────────────────────────
+   GOOGLE DRIVE EXPORT
+   Uploads KYB documents to the admin's personal Drive
+   via Google Identity Services (OAuth2 token client).
+   Requires VITE_GOOGLE_CLIENT_ID at build time.
+───────────────────────────────────────────── */
+const GOOGLE_CLIENT_ID = import.meta.env?.VITE_GOOGLE_CLIENT_ID || "";
+const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+
+function requestDriveAccessToken() {
+  return new Promise((resolve, reject) => {
+    if (!window.google?.accounts?.oauth2) return reject(new Error("Google Identity Services not loaded — refresh and try again"));
+    if (!GOOGLE_CLIENT_ID) return reject(new Error("Google OAuth client ID not configured (VITE_GOOGLE_CLIENT_ID)"));
+    const client = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_DRIVE_SCOPE,
+      callback: (r) => r.access_token ? resolve(r.access_token) : reject(new Error(r.error_description || r.error || "Authorization failed")),
+      error_callback: (e) => reject(new Error(e?.message || "Authorization cancelled")),
+    });
+    client.requestAccessToken({ prompt: "" });
+  });
+}
+
+async function driveCreateFolder(accessToken, name) {
+  const res = await fetch("https://www.googleapis.com/drive/v3/files?fields=id,webViewLink", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder" }),
+  });
+  if (!res.ok) throw new Error(`Drive folder create failed (${res.status})`);
+  return res.json();
+}
+
+async function driveUploadFile(accessToken, folderId, fileName, blob) {
+  const metadata = { name: fileName, parents: [folderId] };
+  const form = new FormData();
+  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+  form.append("file", blob);
+  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Drive upload failed for ${fileName} (${res.status})`);
+  return res.json();
+}
+
+function sanitizeFileName(s) {
+  return String(s || "file").replace(/[\/\\?%*:|"<>]/g, "_").slice(0, 180);
+}
+
+/* ─────────────────────────────────────────────
    DOCUMENT FRAUD DETECTION ENGINE
    File Integrity + EXIF + ELA + Claude Vision AI
 ───────────────────────────────────────────── */
@@ -192,7 +243,7 @@ const FIELD_SECTIONS = [
     { key: "appPhone", label: "Mobile Number" },
     { key: "appRole", label: "Role in Organisation" },
     { key: "isAuthSig", label: "Authorised Signatory?" },
-    { key: "spPOC", label: "StablePay Point of Contact" },
+    { key: "spPOC", label: "Stable Pay Point of Contact" },
     { key: "referralSource", label: "Referral Source" },
   ]},
   { title: "Company Information", step: 1, fields: [
@@ -385,9 +436,9 @@ const MOCK_APPS = [
       /* Step 1 — Company */
       co_name:"Meridian Fintech Pvt. Ltd.", co_trade:"MeridianPay", co_country:"India", co_form:"Private Limited Company (Pvt. Ltd.)", co_crn:"U72200MH2021PTC123456", co_doi:"2021-06-15", co_regAddr:"301, Trade Tower, Bandra Kurla Complex, Mumbai, Maharashtra 400051, India", co_opAddr:"", co_web:"https://meridianfintech.in", co_email:"legal@meridianfin.in", co_tin:"AABCM1234A", co_gst:"27AABCM1234A1Z5", co_lei:"", co_startup:"DIPP12345",
       /* Step 2 — Business Profile */
-      biz_desc:"Cross-border remittance facilitation for Indian SMEs importing goods from US/EU suppliers. We receive USDT from our clients and convert to INR via StablePay OTC for settlement to supplier bank accounts in India.", biz_services:"B2B cross-border payments, FX hedging advisory, trade finance facilitation", biz_custType:"B2B Only", biz_regulated:"Yes — currently licensed", biz_licences:"AD-II Licence — Reserve Bank of India — Mumbai — Expires 2027-03-31", biz_targetJuris:"India, United States, United Kingdom, Singapore, UAE", biz_exclJuris:"Iran, North Korea, Cuba, Syria, Russia, Belarus, Myanmar", biz_cdd:"Aadhaar-based e-KYC via DigiLocker API, PAN verification via NSDL, video KYC for high-value accounts (>₹50 lakh), risk scoring based on transaction pattern and geography", biz_kycVendors:"IDfy, Chainalysis, Sumsub",
+      biz_desc:"Cross-border remittance facilitation for Indian SMEs importing goods from US/EU suppliers. We receive USDT from our clients and convert to INR via Stable Pay OTC for settlement to supplier bank accounts in India.", biz_services:"B2B cross-border payments, FX hedging advisory, trade finance facilitation", biz_custType:"B2B Only", biz_regulated:"Yes — currently licensed", biz_licences:"AD-II Licence — Reserve Bank of India — Mumbai — Expires 2027-03-31", biz_targetJuris:"India, United States, United Kingdom, Singapore, UAE", biz_exclJuris:"Iran, North Korea, Cuba, Syria, Russia, Belarus, Myanmar", biz_cdd:"Aadhaar-based e-KYC via DigiLocker API, PAN verification via NSDL, video KYC for high-value accounts (>₹50 lakh), risk scoring based on transaction pattern and geography", biz_kycVendors:"IDfy, Chainalysis, Sumsub",
       /* Step 3 — Payment & Volume */
-      vol_monthly:"USD 500,000", vol_monthlyINR:"INR 4.15 Crore", vol_avgTx:"USD 25,000", vol_txCount:"21–50", vol_minTx:"USD 1,000", vol_maxTx:"USD 100,000", vol_token:"USDT (TRC-20)", vol_chains:"Tron (TRC-20), Ethereum (ERC-20)", vol_wallets:"TRC-20: TKZxk...7fG3\nERC-20: 0x4a3...8b2F", vol_providers:"HDFC Bank, ICICI Bank, Razorpay", vol_custodians:"Binance, WazirX (OTC desk)", vol_fundFlow:"Client sends USDT (TRC-20) to our custodial wallet → We initiate OTC sell via StablePay → StablePay settles INR to our HDFC current account → We remit INR to supplier via NEFT/RTGS",
+      vol_monthly:"USD 500,000", vol_monthlyINR:"INR 4.15 Crore", vol_avgTx:"USD 25,000", vol_txCount:"21–50", vol_minTx:"USD 1,000", vol_maxTx:"USD 100,000", vol_token:"USDT (TRC-20)", vol_chains:"Tron (TRC-20), Ethereum (ERC-20)", vol_wallets:"TRC-20: TKZxk...7fG3\nERC-20: 0x4a3...8b2F", vol_providers:"HDFC Bank, ICICI Bank, Razorpay", vol_custodians:"Binance, WazirX (OTC desk)", vol_fundFlow:"Client sends USDT (TRC-20) to our custodial wallet → We initiate OTC sell via Stable Pay → Stable Pay settles INR to our HDFC current account → We remit INR to supplier via NEFT/RTGS",
       /* Step 4 — Beneficial Owners */
       bo0_name:"Rajesh Mehta", bo0_dob:"1985-03-12", bo0_nat:"India", bo0_res:"India", bo0_pct:"60%", bo0_ctrl:"Direct Shareholder", bo0_id:"AABPM1234A", bo0_tin:"AABPM1234A", bo0_addr:"14B, Sea View Apartments, Carter Road, Bandra West, Mumbai 400050, India", bo0_email:"rajesh@meridianfin.in", bo0_selfie: mockLiveness("2026-03-18T14:18:00Z"),
       bo1_name:"Priya Sharma", bo1_dob:"1990-08-22", bo1_nat:"India", bo1_res:"India", bo1_pct:"25%", bo1_ctrl:"Direct Shareholder", bo1_id:"BXZPS5678B", bo1_tin:"BXZPS5678B", bo1_addr:"Flat 702, Lodha Palava, Dombivli East, Thane 421204, India", bo1_email:"priya@meridianfin.in", bo1_selfie: mockLiveness("2026-03-18T14:20:00Z"),
@@ -430,7 +481,7 @@ const MOCK_APPS = [
       email:"ops@cryptovault.sg", appName:"Wei Lin Tan", appTitle:"Chief Compliance Officer / MLRO", appPhone:"+65 9876 5432", appRole:"Chief Compliance Officer / MLRO", isAuthSig:"Yes", spPOC:"", referralSource:"Industry Event",
       co_name:"CryptoVault Pte. Ltd.", co_trade:"CryptoVault", co_country:"Singapore", co_form:"Private Limited Company (Pvt. Ltd.)", co_crn:"202312345K", co_doi:"2023-04-01", co_regAddr:"1 Raffles Place, #20-01, One Raffles Place Tower 2, Singapore 048616", co_opAddr:"", co_web:"https://cryptovault.sg", co_email:"compliance@cryptovault.sg", co_tin:"T23LL1234A", co_gst:"", co_lei:"", co_startup:"",
       biz_desc:"OTC desk for high-net-worth individuals and institutions trading large blocks of stablecoins against SGD and INR. We facilitate USDT/USDC to INR conversions for clients with Indian operations.", biz_services:"OTC crypto trading, block trade execution, stablecoin liquidity provision", biz_custType:"Institutional / Wholesale Only", biz_regulated:"Yes — currently licensed", biz_licences:"MAS Digital Payment Token Service Licence — Monetary Authority of Singapore — Expires 2027-12-31", biz_targetJuris:"Singapore, India, Hong Kong SAR, UAE", biz_exclJuris:"All FATF black-list, OFAC sanctioned", biz_cdd:"SingPass-based MyInfo verification, video KYC via Jumio, enhanced due diligence for >SGD 100K monthly volume, source of wealth verification for all HNI clients", biz_kycVendors:"Jumio, Chainalysis, Elliptic, Crystal Blockchain",
-      vol_monthly:"USD 5,000,000", vol_monthlyINR:"INR 41.5 Crore", vol_avgTx:"USD 100,000", vol_txCount:"51–100", vol_minTx:"USD 10,000", vol_maxTx:"USD 500,000", vol_token:"Multiple Stablecoins", vol_chains:"Ethereum (ERC-20), Tron (TRC-20), Solana", vol_wallets:"ERC-20: 0xaB3...9fE2\nTRC-20: TQx4...mN8p\nSolana: 7Kz...4Wp", vol_providers:"DBS Bank, Standard Chartered Singapore", vol_custodians:"Fireblocks, Anchorage Digital, Circle", vol_fundFlow:"Client deposits USDT/USDC to our Fireblocks-custodied wallet → We execute OTC sell on StablePay → INR settled to our DBS account → We wire INR to client's Indian bank account via SWIFT",
+      vol_monthly:"USD 5,000,000", vol_monthlyINR:"INR 41.5 Crore", vol_avgTx:"USD 100,000", vol_txCount:"51–100", vol_minTx:"USD 10,000", vol_maxTx:"USD 500,000", vol_token:"Multiple Stablecoins", vol_chains:"Ethereum (ERC-20), Tron (TRC-20), Solana", vol_wallets:"ERC-20: 0xaB3...9fE2\nTRC-20: TQx4...mN8p\nSolana: 7Kz...4Wp", vol_providers:"DBS Bank, Standard Chartered Singapore", vol_custodians:"Fireblocks, Anchorage Digital, Circle", vol_fundFlow:"Client deposits USDT/USDC to our Fireblocks-custodied wallet → We execute OTC sell on Stable Pay → INR settled to our DBS account → We wire INR to client's Indian bank account via SWIFT",
       bo0_name:"Wei Lin Tan", bo0_dob:"1982-07-19", bo0_nat:"Singapore", bo0_res:"Singapore", bo0_pct:"45%", bo0_ctrl:"Direct Shareholder", bo0_id:"S8219876A", bo0_tin:"S8219876A", bo0_addr:"12 Nassim Road, #08-02, Singapore 258391", bo0_email:"weilin@cryptovault.sg", bo0_selfie: mockLiveness("2026-03-20T02:20:00Z"),
       bo1_name:"Marcus Lim", bo1_dob:"1979-12-03", bo1_nat:"Singapore", bo1_res:"Hong Kong SAR", bo1_pct:"35%", bo1_ctrl:"Direct Shareholder", bo1_id:"S7912345B", bo1_tin:"S7912345B", bo1_addr:"2 Tregunter Path, Mid-Levels, Hong Kong", bo1_email:"marcus@cryptovault.sg", bo1_selfie: mockLiveness("2026-03-20T02:24:00Z"),
       bo2_name:"Yuki Tanaka", bo2_dob:"1995-04-10", bo2_nat:"Japan", bo2_res:"Singapore", bo2_pct:"20%", bo2_ctrl:"Indirect Shareholder", bo2_id:"TK12345678", bo2_tin:"", bo2_addr:"8 Scotts Road, #12-04, Singapore 228238", bo2_email:"yuki@cryptovault.sg", bo2_selfie: mockLiveness("2026-03-20T02:28:00Z"),
@@ -438,7 +489,7 @@ const MOCK_APPS = [
       sof_biz:"Proprietary capital from founders (USD 3M), Series A from Paradigm (USD 8M, 2024), trading desk revenue", sow0_name:"Wei Lin Tan", sow0_desc:"Former VP at Goldman Sachs Singapore (2006-2020), accumulated compensation and bonuses, property portfolio in Singapore", sow1_name:"Marcus Lim", sow1_desc:"Co-founder of previous fintech acquired by Grab (2019) for SGD 12M, angel investments",
       pep_status:"None are PEPs", sanc1:true, sanc2:true, sanc3:true, sanc4:true, sanc5:true, regAction:"No", highRisk:["None of the above"],
       aml_hasPolicy:"Yes", aml_strFiled:"Yes", aml_hasMLRO:"Yes", aml_mlroName:"Wei Lin Tan", aml_mlroEmail:"weilin@cryptovault.sg", aml_mlroQual:"CAMS, ICA Diploma in AML, 16 years compliance experience", aml_mlroDOA:"2023-04-15", aml_txMon:"Chainalysis KYT real-time monitoring, internal rule engine with 47 scenarios, automated SAR generation, 24h investigation SLA", aml_sanctScreening:"OFAC, UN, EU, MAS MAS-sanctioned lists via World-Check — real-time screening at onboarding and continuous monitoring", aml_adverseMedia:"Automated — real-time", aml_retention:"10 years", aml_training:"Quarterly", aml_tools:"Chainalysis KYT + Reactor, Refinitiv World-Check, Jumio, Crystal Blockchain, Elliptic", aml_audit:"Yes — within last 12 months",
-      declarations:[0,1,2,3,4,5,6], decl_name:"Wei Lin Tan", decl_title:"CCO / MLRO", decl_email:"weilin@cryptovault.sg", decl_date:"2026-03-20", decl_remarks:"MAS has been notified of our intent to onboard StablePay as an OTC counterparty for INR settlement.",
+      declarations:[0,1,2,3,4,5,6], decl_name:"Wei Lin Tan", decl_title:"CCO / MLRO", decl_email:"weilin@cryptovault.sg", decl_date:"2026-03-20", decl_remarks:"MAS has been notified of our intent to onboard Stable Pay as an OTC counterparty for INR settlement.",
       _submissionMeta:{submittedAt:"2026-03-20T02:30:00Z",timezone:"Asia/Singapore",ip:"175.156.89.42",userAgent:"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",screenRes:"3840x2160",platform:"Win32",language:"en-SG",geo:{lat:1.2897,lng:103.8501,accuracy:8,capturedAt:"2026-03-20T02:30:03Z"}},
     },
     docs: ALL_DOCS.map(d => ({ ...d, fileName: d.key.replace(/_/g,"_") + ".jpg", hasFile: true })),
@@ -502,7 +553,7 @@ function Stat({ label, value, mono }) {
 /* ─────────────────────────────────────────────
    DOCUMENT REVIEW PANEL
 ───────────────────────────────────────────── */
-function DocReviewCard({ doc, analysis, onAnalyze }) {
+function DocReviewCard({ doc, analysis, onAnalyze, onDownload }) {
   const [expanded, setExpanded] = useState(false);
   const a = analysis;
   const hasResult = a && a.status === "complete";
@@ -544,6 +595,20 @@ function DocReviewCard({ doc, analysis, onAnalyze }) {
             <div style={{ width: 8, height: 8, borderRadius: "50%", border: `2px solid ${T.blue}`, borderTopColor: "transparent", animation: "spin .8s linear infinite" }} />
             <span style={{ fontSize: 10.5, color: T.txt3 }}>Analyzing...</span>
           </div>
+        )}
+
+        {doc.hasFile && doc.docId && onDownload && (
+          <button
+            onClick={() => onDownload(doc)}
+            title="Download document"
+            style={{
+              padding: "6px 10px", borderRadius: 6, border: `1px solid ${T.bdrA}`, background: "transparent",
+              color: T.txt2, cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+              fontSize: 11, fontFamily: "'Inter', system-ui, sans-serif",
+            }}>
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1V9M7 9L4 6M7 9L10 6M1 11V13H13V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Download
+          </button>
         )}
 
         {!hasResult && !isAnalyzing && (
@@ -629,7 +694,7 @@ function STRReportTab({ app }) {
     const totalAmt = txns.reduce((s, t) => s + (parseFloat(t.amount.replace(/[^0-9.]/g,"")) || 0), 0);
 
     const w = window.open("", "_blank");
-    w.document.write(`<!DOCTYPE html><html><head><title>STR — ${d.co_name} — ${app.id}</title>
+    w.document.write(`<!DOCTYPE html><html><head><title>STR — ${d.co_name} — ${app.ref_code || app.id}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:10.5pt;color:#1a1a2e;padding:36px 44px;line-height:1.5;max-width:900px;margin:0 auto}
@@ -666,10 +731,10 @@ code{font-family:'Courier New',monospace;font-size:9pt;background:#f5f5f5;paddin
 
 <h2>Part A — Reporting Entity</h2>
 <div class="grid2">
-<div><div class="fl">Reporting Entity Name</div><div class="fv"><strong>StablePay Global</strong></div></div>
+<div><div class="fl">Reporting Entity Name</div><div class="fv"><strong>Stable Pay Global</strong></div></div>
 <div><div class="fl">FIU Registration No.</div><div class="fv"><code>RE/CRYPTO/2024/XXXX</code></div></div>
 <div><div class="fl">Report Date</div><div class="fv">${reportDate}</div></div>
-<div><div class="fl">Report Reference</div><div class="fv"><code>STR-${app.id}-${Date.now().toString(36).toUpperCase().slice(-6)}</code></div></div>
+<div><div class="fl">Report Reference</div><div class="fv"><code>STR-${app.ref_code || app.id}-${Date.now().toString(36).toUpperCase().slice(-6)}</code></div></div>
 <div><div class="fl">Reporting Officer</div><div class="fv">${reporterName || "—"}</div></div>
 <div><div class="fl">Designation</div><div class="fv">${reporterDesig}</div></div>
 </div>
@@ -677,7 +742,7 @@ code{font-family:'Courier New',monospace;font-size:9pt;background:#f5f5f5;paddin
 <h2>Part B — Subject Entity Details</h2>
 <div class="grid2">
 <div><div class="fl">Legal Entity Name</div><div class="fv"><strong>${d.co_name || "—"}</strong></div></div>
-<div><div class="fl">Application ID</div><div class="fv"><code>${app.id}</code></div></div>
+<div><div class="fl">Application ID</div><div class="fv"><code>${app.ref_code || app.id}</code></div></div>
 <div><div class="fl">Registration No.</div><div class="fv"><code>${d.co_crn || "—"}</code></div></div>
 <div><div class="fl">Country</div><div class="fv">${d.co_country || "—"}</div></div>
 <div><div class="fl">Tax ID (PAN/EIN/TIN)</div><div class="fv"><code>${d.co_tin || "—"}</code></div></div>
@@ -710,7 +775,7 @@ ${Array.from({length:3},(_,i)=>i).filter(i=>d["bo"+i+"_name"]).map(i => `<tr><td
 <h2>Part F — Action Taken</h2>
 <div class="grid2">
 <div><div class="fl">Entity KYB Status</div><div class="fv">${app.status.replace(/_/g," ").toUpperCase()}</div></div>
-<div><div class="fl">Risk Tier</div><div class="fv">${app.riskTier.toUpperCase()}</div></div>
+<div><div class="fl">Risk Tier</div><div class="fv">${(app.riskTier || "—").toUpperCase()}</div></div>
 <div><div class="fl">Transaction Blocked</div><div class="fv">Pending Review</div></div>
 <div><div class="fl">EDD Initiated</div><div class="fv">Yes — upon STR filing</div></div>
 </div>
@@ -719,7 +784,7 @@ ${Array.from({length:3},(_,i)=>i).filter(i=>d["bo"+i+"_name"]).map(i => `<tr><td
 <p style="font-size:9.5pt;margin-bottom:16px;line-height:1.6">I hereby certify that the information contained in this Suspicious Transaction Report is true, correct, and complete to the best of my knowledge and belief. This report is filed pursuant to the obligations under Section 12 of the Prevention of Money Laundering Act, 2002, and Rule 3 of the PML (Maintenance of Records) Rules, 2005.</p>
 <div class="sig-box">
 <div>
-<div class="sig-line"><strong>${reporterName || "________________"}</strong><br/>${reporterDesig}<br/>StablePay Global</div>
+<div class="sig-line"><strong>${reporterName || "________________"}</strong><br/>${reporterDesig}<br/>Stable Pay Global</div>
 </div>
 <div>
 <div class="sig-line">Date: ${reportDate}<br/>Place: ________________</div>
@@ -729,7 +794,7 @@ ${Array.from({length:3},(_,i)=>i).filter(i=>d["bo"+i+"_name"]).map(i => `<tr><td
 <div class="footer">
 <strong>CONFIDENTIAL — SUSPICIOUS TRANSACTION REPORT</strong><br/>
 Filed under PMLA 2002 / PML Rules 2005 — For FIU-IND use only<br/>
-StablePay Global · STR-${app.id} · Generated ${new Date().toISOString()}
+Stable Pay Global · STR-${app.ref_code || app.id} · Generated ${new Date().toISOString()}
 </div>
 </body></html>`);
     w.document.close();
@@ -877,18 +942,284 @@ StablePay Global · STR-${app.id} · Generated ${new Date().toISOString()}
    MAIN ADMIN PANEL
 ───────────────────────────────────────────── */
 export default function AdminPanel() {
-  const [view, setView] = useState("list"); // list | detail
+  const [view, setView] = useState("list"); // list | detail | login
   const [selectedApp, setSelectedApp] = useState(null);
-  const [apps, setApps] = useState(MOCK_APPS);
+  const [apps, setApps] = useState([]);
+  const [appsLoading, setAppsLoading] = useState(true);
   const [docAnalysis, setDocAnalysis] = useState({}); // { "appId:docKey": analysisResult }
   const [detailTab, setDetailTab] = useState("overview");
+  const [drafts, setDrafts] = useState([]);
+  const [draftsLoading, setDraftsLoading] = useState(true);
+  const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem("sp_admin_token") || "");
+  const [adminUser, setAdminUser] = useState(null);
+  const [loginErr, setLoginErr] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPw, setLoginPw] = useState("");
+  const [selectedDraft, setSelectedDraft] = useState(null);
+  const [draftDetail, setDraftDetail] = useState(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [driveState, setDriveState] = useState({ status: "idle", progress: 0, total: 0, folderUrl: null, error: null });
 
-  const openApp = (app) => { setSelectedApp(app); setView("detail"); setDetailTab("overview"); };
+  useEffect(() => {
+    setDriveState({ status: "idle", progress: 0, total: 0, folderUrl: null, error: null });
+  }, [selectedApp?.id]);
+
+  const downloadDocBlob = async (doc) => {
+    const adminToken = sessionStorage.getItem("sp_admin_token");
+    const res = await fetch(`/api/documents/${doc.docId}/download`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    if (!res.ok) throw new Error(`Could not fetch "${doc.label}" (${res.status})`);
+    return res.blob();
+  };
+
+  const triggerBrowserDownload = (blob, fileName) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const downloadOneDoc = async (doc) => {
+    if (!doc?.docId) return;
+    try {
+      const blob = await downloadDocBlob(doc);
+      const ext = (doc.fileName || "").split(".").pop();
+      const fileName = sanitizeFileName(`${doc.label}${ext ? "." + ext : ""}`);
+      triggerBrowserDownload(blob, fileName);
+    } catch (err) {
+      console.error("[Download] Failed:", err);
+      alert(err.message || "Download failed");
+    }
+  };
+
+  const downloadAllDocs = async (app, docs) => {
+    const uploadable = docs.filter(d => d.hasFile && d.docId);
+    if (uploadable.length === 0) return;
+    for (const doc of uploadable) {
+      try {
+        const blob = await downloadDocBlob(doc);
+        const ext = (doc.fileName || "").split(".").pop();
+        const baseLabel = `${app.ref_code || app.id} - ${doc.label}`;
+        const fileName = sanitizeFileName(`${baseLabel}${ext ? "." + ext : ""}`);
+        triggerBrowserDownload(blob, fileName);
+        await new Promise(r => setTimeout(r, 300));
+      } catch (err) {
+        console.error("[Download] Failed for", doc.label, err);
+      }
+    }
+  };
+
+  const saveDocsToGoogleDrive = async (app, docs) => {
+    const uploadable = docs.filter(d => d.hasFile && d.docId);
+    if (uploadable.length === 0) {
+      setDriveState({ status: "error", progress: 0, total: 0, folderUrl: null, error: "No uploaded documents to export" });
+      return;
+    }
+    setDriveState({ status: "authorizing", progress: 0, total: uploadable.length, folderUrl: null, error: null });
+    try {
+      const accessToken = await requestDriveAccessToken();
+      setDriveState(s => ({ ...s, status: "creating-folder" }));
+      const folderLabel = sanitizeFileName(`KYB - ${app.data.co_name || "Untitled"} - ${app.ref_code || app.id}`);
+      const folder = await driveCreateFolder(accessToken, folderLabel);
+
+      const adminToken = sessionStorage.getItem("sp_admin_token");
+      let uploaded = 0;
+      setDriveState(s => ({ ...s, status: "uploading", progress: 0 }));
+      for (const doc of uploadable) {
+        const dRes = await fetch(`/api/documents/${doc.docId}/download`, {
+          headers: { Authorization: `Bearer ${adminToken}` },
+        });
+        if (!dRes.ok) throw new Error(`Could not fetch "${doc.label}" (${dRes.status})`);
+        const blob = await dRes.blob();
+        const ext = (doc.fileName || "").split(".").pop();
+        const fileName = sanitizeFileName(`${doc.label}${ext ? "." + ext : ""}`);
+        await driveUploadFile(accessToken, folder.id, fileName, blob);
+        uploaded++;
+        setDriveState(s => ({ ...s, progress: uploaded }));
+      }
+      setDriveState({ status: "done", progress: uploaded, total: uploadable.length, folderUrl: folder.webViewLink || `https://drive.google.com/drive/folders/${folder.id}`, error: null });
+    } catch (err) {
+      console.error("[Drive] Export failed:", err);
+      setDriveState(s => ({ ...s, status: "error", error: err.message || "Export failed" }));
+    }
+  };
+
+  // Admin login
+  const doLogin = async (email, password) => {
+    setLoginLoading(true);
+    setLoginErr("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Login failed");
+      sessionStorage.setItem("sp_admin_token", data.token);
+      setAdminToken(data.token);
+      setAdminUser(data.user);
+    } catch (e) {
+      setLoginErr(e.message);
+    }
+    setLoginLoading(false);
+  };
+
+  const doLogout = () => {
+    sessionStorage.removeItem("sp_admin_token");
+    setAdminToken("");
+    setAdminUser(null);
+    setDrafts([]);
+  };
+
+  // Fetch live drafts with polling
+  const fetchDrafts = useCallback(async () => {
+    try {
+      const token = sessionStorage.getItem("sp_admin_token");
+      if (!token) { setDraftsLoading(false); return; }
+      const res = await fetch("/api/applications/drafts", {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDrafts(data.drafts || []);
+      } else if (res.status === 401 || res.status === 403) {
+        doLogout();
+      }
+    } catch {}
+    setDraftsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchDrafts();
+    const interval = setInterval(fetchDrafts, 15000); // poll every 15s
+    return () => clearInterval(interval);
+  }, [fetchDrafts, adminToken]);
+
+  // Fetch submitted applications from API
+  const fetchApps = useCallback(async () => {
+    try {
+      const token = sessionStorage.getItem("sp_admin_token");
+      if (!token) { setAppsLoading(false); return; }
+      const res = await fetch("/api/applications", {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const normalized = (data.applications || []).map(a => {
+          const fd = typeof a.form_data === "string" ? JSON.parse(a.form_data) : (a.form_data || {});
+          return {
+            id: a.id,
+            ref_code: a.ref_code,
+            submitted: a.submitted_at,
+            status: a.status,
+            riskTier: a.risk_tier || "—",
+            data: {
+              co_name: a.co_name || fd.co_name || "—",
+              appName: a.app_name || fd.appName || "—",
+              co_country: a.country || fd.co_country || "—",
+              ...fd,
+            },
+            docs: [],
+          };
+        });
+        setApps(normalized);
+      } else if (res.status === 401 || res.status === 403) {
+        doLogout();
+      }
+    } catch (err) {
+      console.error("[Admin] Failed to fetch applications:", err);
+    }
+    setAppsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (adminToken) fetchApps();
+  }, [fetchApps, adminToken]);
+
+  const openDraft = useCallback(async (draft) => {
+    setSelectedDraft(draft);
+    setDraftDetail(null);
+    setDraftLoading(true);
+    try {
+      const token = sessionStorage.getItem("sp_admin_token");
+      const res = await fetch(`/api/applications/${draft.id}`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const fd = typeof data.form_data === "string" ? JSON.parse(data.form_data) : (data.form_data || {});
+        setDraftDetail({ ...data, data: fd });
+      }
+    } catch {}
+    setDraftLoading(false);
+  }, []);
+
+  const closeDraft = () => { setSelectedDraft(null); setDraftDetail(null); };
+
+  const openApp = useCallback(async (app) => {
+    setSelectedApp(app);
+    setView("detail");
+    setDetailTab("overview");
+    // Fetch full detail from API
+    try {
+      const token = sessionStorage.getItem("sp_admin_token");
+      const res = await fetch(`/api/applications/${app.id}`, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const detail = await res.json();
+        const fd = typeof detail.form_data === "string" ? JSON.parse(detail.form_data) : (detail.form_data || {});
+        const docs = (detail.documents || []).map(d => ({
+          key: d.field_key,
+          label: (ALL_DOCS.find(ad => ad.key === d.field_key) || {}).label || d.field_key,
+          fileName: d.original_name,
+          hasFile: true,
+          docId: d.id,
+        }));
+        // Fill in any ALL_DOCS entries that have no uploaded file
+        const uploadedKeys = new Set(docs.map(d => d.key));
+        ALL_DOCS.forEach(ad => {
+          if (!uploadedKeys.has(ad.key)) docs.push({ key: ad.key, label: ad.label, fileName: null, hasFile: false });
+        });
+        setSelectedApp({
+          id: detail.id,
+          ref_code: detail.ref_code,
+          submitted: detail.submitted_at,
+          status: detail.status,
+          riskTier: detail.risk_tier || "—",
+          data: fd,
+          docs,
+          notes: detail.notes || [],
+        });
+      }
+    } catch (err) {
+      console.error("[Admin] Failed to load app detail:", err);
+    }
+  }, []);
   const goBack = () => { setView("list"); setSelectedApp(null); };
 
-  const updateStatus = (appId, newStatus) => {
-    setApps(prev => prev.map(a => a.id === appId ? { ...a, status: newStatus } : a));
-    if (selectedApp?.id === appId) setSelectedApp(prev => ({ ...prev, status: newStatus }));
+  const updateStatus = async (appId, newStatus) => {
+    try {
+      const token = sessionStorage.getItem("sp_admin_token");
+      const res = await fetch(`/api/applications/${appId}/status`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        setApps(prev => prev.map(a => a.id === appId ? { ...a, status: newStatus } : a));
+        if (selectedApp?.id === appId) setSelectedApp(prev => ({ ...prev, status: newStatus }));
+      }
+    } catch (err) {
+      console.error("[Admin] Status update failed:", err);
+    }
   };
 
   // Create a fake File object for demo (in production, files would come from backend)
@@ -901,7 +1232,8 @@ export default function AdminPanel() {
   const triggerDocAnalysis = useCallback((appId, docKey, docLabel) => {
     const aKey = `${appId}:${docKey}`;
     setDocAnalysis(prev => ({ ...prev, [aKey]: { status: "analyzing" } }));
-    const file = createDemoFile(MOCK_APPS.find(a => a.id === appId)?.docs.find(d => d.key === docKey)?.fileName || "doc.pdf");
+    const appMatch = apps.find(a => a.id === appId);
+    const file = createDemoFile((appMatch?.docs || []).find(d => d.key === docKey)?.fileName || "doc.pdf");
     runFullAnalysis(file, docLabel).then(result => {
       setDocAnalysis(prev => ({ ...prev, [aKey]: result }));
     }).catch(() => {
@@ -910,7 +1242,7 @@ export default function AdminPanel() {
   }, []);
 
   const scanAllDocs = (app) => {
-    app.docs.forEach(doc => {
+    (app.docs || []).forEach(doc => {
       const aKey = `${app.id}:${doc.key}`;
       if (!docAnalysis[aKey]) triggerDocAnalysis(app.id, doc.key, doc.label);
     });
@@ -925,6 +1257,28 @@ export default function AdminPanel() {
     <div style={{ minHeight: "100vh", background: T.bg0, fontFamily: "'Inter', system-ui, sans-serif", color: T.txt, position: "relative" }}>
       <style>{CSS}</style>
 
+      {/* Admin Login Screen */}
+      {!adminToken && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 24 }}>
+          <div style={{ width: 380, padding: 32, background: T.bg1, borderRadius: 16, border: `1px solid ${T.bdr}` }}>
+            <div style={{ fontSize: 14, fontWeight: 400, color: T.blueL, marginBottom: 2 }}>Stable Pay</div>
+            <div style={{ fontSize: 9.5, color: T.txt3, letterSpacing: ".06em", marginBottom: 28 }}>COMPLIANCE ADMIN</div>
+            <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20 }}>Sign in</h2>
+            {loginErr && <div style={{ padding: "8px 12px", borderRadius: 8, background: T.redG, color: T.red, fontSize: 12, marginBottom: 14 }}>{loginErr}</div>}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: T.txt3, display: "block", marginBottom: 5 }}>Email</label>
+              <input value={loginEmail} onChange={e => setLoginEmail(e.target.value)} className="sp-input" style={{ width: "100%", padding: "10px 14px", background: T.bg2, border: `1.5px solid ${T.bdr}`, borderRadius: 8, color: T.txt, fontSize: 13, fontFamily: "'Inter', system-ui, sans-serif" }} />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 11, color: T.txt3, display: "block", marginBottom: 5 }}>Password</label>
+              <input type="password" value={loginPw} onChange={e => setLoginPw(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin(loginEmail, loginPw)} className="sp-input" style={{ width: "100%", padding: "10px 14px", background: T.bg2, border: `1.5px solid ${T.bdr}`, borderRadius: 8, color: T.txt, fontSize: 13, fontFamily: "'Inter', system-ui, sans-serif" }} />
+            </div>
+            <button onClick={() => doLogin(loginEmail, loginPw)} disabled={loginLoading} style={{ width: "100%", padding: "11px 0", borderRadius: 8, border: "none", background: T.grad, color: "#fff", fontSize: 13, fontWeight: 600, cursor: loginLoading ? "default" : "pointer", fontFamily: "'Inter', system-ui, sans-serif", opacity: loginLoading ? 0.6 : 1 }}>{loginLoading ? "Signing in..." : "Sign in"}</button>
+          </div>
+        </div>
+      )}
+
+      {adminToken && <>
       {/* Top Nav */}
       <div style={{
         position: "sticky", top: 0, zIndex: 100,
@@ -949,7 +1303,8 @@ export default function AdminPanel() {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
             <span style={{ fontSize: 11, color: T.txt3 }}>Live</span>
           </div>
-          <div style={{ padding: "5px 12px", borderRadius: 6, background: T.bg3, fontSize: 11, color: T.txt2 }}>Compliance Officer</div>
+          {adminUser && <span style={{ fontSize: 11, color: T.txt2 }}>{adminUser.name}</span>}
+          <button onClick={doLogout} style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${T.bdrA}`, background: "transparent", fontSize: 11, color: T.txt3, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif" }}>Logout</button>
         </div>
       </div>
 
@@ -967,6 +1322,62 @@ export default function AdminPanel() {
               <Stat label="Pending Review" value={pending} />
               <Stat label="Flagged" value={flagged} />
               <Stat label="Approved" value={approved} />
+              <Stat label="Live Drafts" value={drafts.length} />
+            </div>
+
+            {/* Live Drafts */}
+            <div style={{ marginBottom: 28, border: `1px solid ${T.bdr}`, borderRadius: 14, overflow: "hidden", background: T.bg1 }}>
+              <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.bdr}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.green, boxShadow: `0 0 8px ${T.green}`, animation: "pulse 2s ease-in-out infinite" }} />
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Live Drafts</span>
+                  <span style={{ fontSize: 10.5, color: T.txt3 }}>Auto-refreshes every 15s</span>
+                </div>
+                <button onClick={fetchDrafts} style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${T.bdrA}`, background: "transparent", color: T.txt2, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif" }}>Refresh</button>
+              </div>
+              {draftsLoading ? (
+                <div style={{ padding: 24, textAlign: "center", color: T.txt3, fontSize: 12 }}>Loading drafts...</div>
+              ) : drafts.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: T.txt3, fontSize: 12 }}>No active drafts</div>
+              ) : (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px 140px 140px", gap: 8, padding: "10px 20px", borderBottom: `1px solid ${T.bdr}`, fontSize: 10.5, fontWeight: 600, color: T.txt3, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    <span>Entity / Applicant</span><span>Email</span><span>Country</span><span>Created</span><span>Last Saved</span>
+                  </div>
+                  {drafts.map(d => {
+                    const hasSaved = d.has_saved;
+                    const updatedAgo = d.updated_at ? Math.round((Date.now() - new Date(d.updated_at).getTime()) / 60000) : null;
+                    const timeLabel = updatedAgo !== null
+                      ? updatedAgo < 1 ? "Just now" : updatedAgo < 60 ? `${updatedAgo}m ago` : updatedAgo < 1440 ? `${Math.round(updatedAgo/60)}h ago` : `${Math.round(updatedAgo/1440)}d ago`
+                      : "—";
+                    return (
+                      <div key={d.id} onClick={() => openDraft(d)} style={{
+                        display: "grid", gridTemplateColumns: "1fr 160px 110px 140px 140px", gap: 8,
+                        padding: "12px 20px", borderBottom: `1px solid ${T.bdr}`, cursor: "pointer",
+                        transition: "background .15s",
+                      }} onMouseEnter={e => e.currentTarget.style.background = T.bg3} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: d.co_name ? T.txt : T.txt3 }}>{d.co_name || "Not yet entered"}</div>
+                          <div style={{ fontSize: 11, color: T.txt3, fontFamily: "'IBM Plex Mono', monospace" }}>{d.ref_code}</div>
+                        </div>
+                        <span style={{ fontSize: 12, color: T.txt2, display: "flex", alignItems: "center", wordBreak: "break-all" }}>{d.applicant_email || d.app_email || "—"}</span>
+                        <span style={{ fontSize: 12, color: T.txt2, display: "flex", alignItems: "center" }}>{d.country || "—"}</span>
+                        <span style={{ fontSize: 11, color: T.txt3, display: "flex", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace" }}>{new Date(d.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          {hasSaved ? (
+                            <>
+                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: updatedAgo < 5 ? T.green : updatedAgo < 60 ? T.amber : T.txt3 }} />
+                              <span style={{ fontSize: 11, color: updatedAgo < 5 ? T.green : updatedAgo < 60 ? T.amber : T.txt3, fontFamily: "'IBM Plex Mono', monospace" }}>{timeLabel}</span>
+                            </>
+                          ) : (
+                            <span style={{ fontSize: 11, color: T.txt3, fontStyle: "italic" }}>Never saved</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
 
             {/* Table */}
@@ -976,7 +1387,11 @@ export default function AdminPanel() {
                 <span>Entity</span><span>Applicant</span><span>Country</span><span>Status</span><span>Submitted</span><span>Risk</span>
               </div>
               {/* Rows */}
-              {apps.map(app => (
+              {appsLoading ? (
+                <div style={{ padding: 24, textAlign: "center", color: T.txt3, fontSize: 12 }}>Loading applications...</div>
+              ) : apps.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center", color: T.txt3, fontSize: 12 }}>No submitted applications yet</div>
+              ) : apps.map(app => (
                 <div key={app.id} onClick={() => openApp(app)} style={{
                   display: "grid", gridTemplateColumns: "1fr 180px 100px 100px 120px 80px", gap: 8,
                   padding: "14px 20px", borderBottom: `1px solid ${T.bdr}`, cursor: "pointer",
@@ -984,12 +1399,12 @@ export default function AdminPanel() {
                 }} onMouseEnter={e => e.currentTarget.style.background = T.bg3} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: T.txt }}>{app.data.co_name}</div>
-                    <div style={{ fontSize: 11, color: T.txt3, fontFamily: "'IBM Plex Mono', monospace" }}>{app.id}</div>
+                    <div style={{ fontSize: 11, color: T.txt3, fontFamily: "'IBM Plex Mono', monospace" }}>{app.ref_code || app.id}</div>
                   </div>
                   <span style={{ fontSize: 12.5, color: T.txt2, display: "flex", alignItems: "center" }}>{app.data.appName}</span>
                   <span style={{ fontSize: 12.5, color: T.txt2, display: "flex", alignItems: "center" }}>{app.data.co_country}</span>
                   <div style={{ display: "flex", alignItems: "center" }}><StatusBadge status={app.status} /></div>
-                  <span style={{ fontSize: 12, color: T.txt3, display: "flex", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace" }}>{new Date(app.submitted).toLocaleDateString()}</span>
+                  <span style={{ fontSize: 12, color: T.txt3, display: "flex", alignItems: "center", fontFamily: "'IBM Plex Mono', monospace" }}>{app.submitted ? new Date(app.submitted).toLocaleDateString() : "—"}</span>
                   <div style={{ display: "flex", alignItems: "center" }}><RiskTierBadge tier={app.riskTier} /></div>
                 </div>
               ))}
@@ -999,16 +1414,18 @@ export default function AdminPanel() {
 
         {/* ── DETAIL VIEW ── */}
         {view === "detail" && selectedApp && (() => {
-          const app = apps.find(a => a.id === selectedApp.id) || selectedApp;
+          const appFromList = apps.find(a => a.id === selectedApp.id);
+          const app = selectedApp.data && Object.keys(selectedApp.data).length > 5 ? selectedApp : (appFromList || selectedApp);
+          const appDocs = app.docs || [];
           const tabs = [
             { id: "overview", label: "Overview" },
-            { id: "documents", label: `Documents (${app.docs.length})` },
+            { id: "documents", label: `Documents (${appDocs.length})` },
             { id: "kyb-report", label: "KYB Report" },
             { id: "str", label: "STR Report" },
             { id: "actions", label: "Actions" },
           ];
 
-          const analyzedDocs = app.docs.map(d => ({ ...d, analysis: docAnalysis[`${app.id}:${d.key}`] }));
+          const analyzedDocs = appDocs.map(d => ({ ...d, analysis: docAnalysis[`${app.id}:${d.key}`] }));
           const completedAnalyses = analyzedDocs.filter(d => d.analysis?.status === "complete");
           const flaggedDocs = completedAnalyses.filter(d => d.analysis?.compositeLevel === "high" || d.analysis?.compositeLevel === "critical");
 
@@ -1022,7 +1439,7 @@ export default function AdminPanel() {
                     <StatusBadge status={app.status} />
                   </div>
                   <div style={{ display: "flex", gap: 16, fontSize: 12, color: T.txt3 }}>
-                    <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{app.id}</span>
+                    <span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{app.ref_code || app.id}</span>
                     <span>{app.data.appName} · {app.data.appRole}</span>
                     <span>{app.data.co_country}</span>
                   </div>
@@ -1101,7 +1518,7 @@ export default function AdminPanel() {
                                       const imgs = (val.captures || []).filter(c => c.image && c.image.startsWith("data:"));
                                       if (imgs.length === 0) return;
                                       const w = window.open("", "_blank");
-                                      w.document.write(`<!DOCTYPE html><html><head><title>Liveness Captures — ${app.data.co_name}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0C0C14;color:#F0F0F8;font-family:Inter,system-ui,sans-serif;padding:32px}.grid{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}h1{text-align:center;margin-bottom:8px;font-size:18px}p{text-align:center;color:#707088;margin-bottom:24px;font-size:13px}.card{background:#1C1C2E;border-radius:12px;padding:12px;text-align:center;width:200px}.card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;margin-bottom:8px}.label{font-size:11px;color:#B0B0C8;margin-bottom:6px}.dl{display:inline-block;padding:4px 12px;border-radius:6px;background:#24243A;color:#A0A1D8;font-size:11px;cursor:pointer;border:1px solid #3A3A58;text-decoration:none}@media print{body{background:#fff;color:#000}.card{background:#f5f5f5}.label{color:#333}.dl{display:none}}</style></head><body><h1>Liveness Verification — ${f.key.replace(/_selfie/,"").replace("bo","BO ")}</h1><p>${app.data.co_name} · ${app.id} · ${new Date(val.completedAt).toLocaleString()}</p><div class="grid">${imgs.map((c,i) => `<div class="card"><img src="${c.image}" alt="Challenge ${i+1}"/><div class="label">${c.challenge}</div><a class="dl" href="${c.image}" download="liveness_${f.key}_${i+1}.jpg">Download</a></div>`).join("")}</div></body></html>`);
+                                      w.document.write(`<!DOCTYPE html><html><head><title>Liveness Captures — ${app.data.co_name}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0C0C14;color:#F0F0F8;font-family:Inter,system-ui,sans-serif;padding:32px}.grid{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}h1{text-align:center;margin-bottom:8px;font-size:18px}p{text-align:center;color:#707088;margin-bottom:24px;font-size:13px}.card{background:#1C1C2E;border-radius:12px;padding:12px;text-align:center;width:200px}.card img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;margin-bottom:8px}.label{font-size:11px;color:#B0B0C8;margin-bottom:6px}.dl{display:inline-block;padding:4px 12px;border-radius:6px;background:#24243A;color:#A0A1D8;font-size:11px;cursor:pointer;border:1px solid #3A3A58;text-decoration:none}@media print{body{background:#fff;color:#000}.card{background:#f5f5f5}.label{color:#333}.dl{display:none}}</style></head><body><h1>Liveness Verification — ${f.key.replace(/_selfie/,"").replace("bo","BO ")}</h1><p>${app.data.co_name} · ${app.ref_code || app.id} · ${new Date(val.completedAt).toLocaleString()}</p><div class="grid">${imgs.map((c,i) => `<div class="card"><img src="${c.image}" alt="Challenge ${i+1}"/><div class="label">${c.challenge}</div><a class="dl" href="${c.image}" download="liveness_${f.key}_${i+1}.jpg">Download</a></div>`).join("")}</div></body></html>`);
                                       w.document.close();
                                     }} style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${T.green}44`, background: "transparent", color: T.green, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
                                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 8V10.5H11V8M6 1V8M3.5 5.5L6 8L8.5 5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -1218,12 +1635,104 @@ export default function AdminPanel() {
               {/* Tab: Documents */}
               {detailTab === "documents" && (
                 <div>
-                  {app.docs.map(doc => (
+                  {(() => {
+                    const uploadedCount = appDocs.filter(d => d.hasFile && d.docId).length;
+                    const busy = ["authorizing", "creating-folder", "uploading"].includes(driveState.status);
+                    const statusLine =
+                      driveState.status === "authorizing" ? "Waiting for Google sign-in…" :
+                      driveState.status === "creating-folder" ? "Creating Drive folder…" :
+                      driveState.status === "uploading" ? `Uploading ${driveState.progress + 1} of ${driveState.total}…` :
+                      driveState.status === "done" ? `Exported ${driveState.progress} of ${driveState.total} documents` :
+                      driveState.status === "error" ? driveState.error :
+                      `${uploadedCount} uploaded document${uploadedCount === 1 ? "" : "s"} ready to export`;
+                    const statusColor = driveState.status === "error" ? T.red : driveState.status === "done" ? T.green : T.txt3;
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "14px 18px", background: T.bg1, border: `1px solid ${T.bdr}`, borderRadius: 12 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{ width: 36, height: 36, borderRadius: 8, background: T.bg3, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M8 4L2 14L5 19H13L16 14L10 4H8Z" fill="#4285F4"/><path d="M10 4L16 14H22L16.5 4H10Z" fill="#EA4335"/><path d="M22 14H16L13 19H19L22 14Z" fill="#FBBC05"/><path d="M5 19L8 14H2L5 19Z" fill="#34A853"/></svg>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: T.txt }}>Export to Google Drive</div>
+                            <div style={{ fontSize: 11.5, color: statusColor, marginTop: 2 }}>{statusLine}</div>
+                          </div>
+                        </div>
+                        {driveState.status === "done" && driveState.folderUrl ? (
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              onClick={() => downloadAllDocs(app, appDocs)}
+                              disabled={uploadedCount === 0}
+                              style={{
+                                padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${T.bdrA}`, background: "transparent",
+                                color: T.txt, fontSize: 12, fontWeight: 600, cursor: uploadedCount === 0 ? "not-allowed" : "pointer",
+                                display: "flex", alignItems: "center", gap: 6,
+                              }}>
+                              <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1V9M7 9L4 6M7 9L10 6M1 11V13H13V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              Download all
+                            </button>
+                            <a href={driveState.folderUrl} target="_blank" rel="noopener noreferrer" style={{
+                              padding: "8px 16px", borderRadius: 8, border: `1.5px solid ${T.bdrA}`, background: "transparent",
+                              color: T.txt, fontSize: 12, fontWeight: 600, textDecoration: "none",
+                              display: "flex", alignItems: "center", gap: 6,
+                            }}>
+                              Open folder
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1H9V7M9 1L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                            </a>
+                            <button onClick={() => saveDocsToGoogleDrive(app, appDocs)} style={{
+                              padding: "8px 16px", borderRadius: 8, border: "none", background: T.grad, color: "#fff",
+                              fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'Inter', system-ui, sans-serif",
+                            }}>Export again</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => downloadAllDocs(app, appDocs)}
+                            disabled={busy || uploadedCount === 0}
+                            style={{
+                              padding: "10px 16px", borderRadius: 8,
+                              border: `1.5px solid ${busy || uploadedCount === 0 ? T.bdr : T.bdrA}`,
+                              background: "transparent",
+                              color: busy || uploadedCount === 0 ? T.txt3 : T.txt,
+                              fontSize: 12.5, fontWeight: 600,
+                              cursor: busy || uploadedCount === 0 ? "not-allowed" : "pointer",
+                              fontFamily: "'Inter', system-ui, sans-serif",
+                              display: "flex", alignItems: "center", gap: 8,
+                            }}>
+                            <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1V9M7 9L4 6M7 9L10 6M1 11V13H13V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            Download all
+                          </button>
+                          <button
+                            onClick={() => saveDocsToGoogleDrive(app, appDocs)}
+                            disabled={busy || uploadedCount === 0}
+                            style={{
+                              padding: "10px 20px", borderRadius: 8, border: "none",
+                              background: busy || uploadedCount === 0 ? T.bg3 : T.grad,
+                              color: busy || uploadedCount === 0 ? T.txt3 : "#fff",
+                              fontSize: 12.5, fontWeight: 600,
+                              cursor: busy || uploadedCount === 0 ? "not-allowed" : "pointer",
+                              fontFamily: "'Inter', system-ui, sans-serif",
+                              display: "flex", alignItems: "center", gap: 8,
+                              boxShadow: busy || uploadedCount === 0 ? "none" : "0 4px 16px rgba(108,109,181,.25)",
+                            }}>
+                            {busy ? (
+                              <div style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid #fff", borderTopColor: "transparent", animation: "spin .8s linear infinite" }} />
+                            ) : (
+                              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1V9M7 9L4 6M7 9L10 6M1 11V13H13V11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            )}
+                            Save to Drive
+                          </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {appDocs.map(doc => (
                     <DocReviewCard
                       key={doc.key}
                       doc={doc}
                       analysis={docAnalysis[`${app.id}:${doc.key}`]}
                       onAnalyze={(docKey, docLabel) => triggerDocAnalysis(app.id, docKey, docLabel)}
+                      onDownload={downloadOneDoc}
                     />
                   ))}
                 </div>
@@ -1241,7 +1750,7 @@ export default function AdminPanel() {
                       <button onClick={() => {
                         const d = app.data;
                         const bos = Array.from({length: d._boCount || 3}, (_,i) => i).filter(i => d[`bo${i}_name`]);
-                        const docsChecklist = app.docs.map(dc => {
+                        const docsChecklist = appDocs.map(dc => {
                           const a = docAnalysis[`${app.id}:${dc.key}`];
                           return `<tr><td>${dc.label}</td><td>${dc.hasFile ? "Submitted" : "Missing"}</td><td>${a?.status === "complete" ? (a.compositeLevel === "low" ? "Clear" : a.compositeLevel === "medium" ? "Review" : "Flagged") : "Not Scanned"}</td><td>${a?.compositeScore ?? "—"}</td></tr>`;
                         }).join("");
@@ -1285,9 +1794,9 @@ tr:nth-child(even){background:#fafafe}
 
 <h1>KYB Due Diligence Report</h1>
 <p class="meta">
-<strong>${d.co_name}</strong> &nbsp;·&nbsp; ${app.id} &nbsp;·&nbsp; Generated ${new Date().toLocaleString()}<br/>
-Application submitted: ${new Date(app.submitted).toLocaleString()} &nbsp;·&nbsp; Status: <span class="status ${app.status === "approved" ? "approved" : app.status === "flagged" ? "flagged" : "pending"}">${app.status.replace(/_/g," ").toUpperCase()}</span>
-&nbsp;·&nbsp; Risk Tier: <strong>${app.riskTier.toUpperCase()}</strong>
+<strong>${d.co_name}</strong> &nbsp;·&nbsp; ${app.ref_code || app.id} &nbsp;·&nbsp; Generated ${new Date().toLocaleString()}<br/>
+Application submitted: ${app.submitted ? new Date(app.submitted).toLocaleString() : "—"} &nbsp;·&nbsp; Status: <span class="status ${app.status === "approved" ? "approved" : app.status === "flagged" ? "flagged" : "pending"}">${app.status.replace(/_/g," ").toUpperCase()}</span>
+&nbsp;·&nbsp; Risk Tier: <strong>${(app.riskTier || "—").toUpperCase()}</strong>
 </p>
 
 <h2>1. Applicant & Contact Details</h2>
@@ -1398,7 +1907,7 @@ ${[0,1].filter(i => d["sow"+i+"_name"]).map(i => `
 <div><div class="field-label">Declarations Confirmed</div><div class="field-value">${(d.declarations||[]).length}/7</div></div>
 
 <div class="footer">
-<strong>StablePay KYB Due Diligence Report</strong> — ${app.id} — Generated ${new Date().toISOString()}<br/>
+<strong>Stable Pay KYB Due Diligence Report</strong> — ${app.ref_code || app.id} — Generated ${new Date().toISOString()}<br/>
 This report is confidential and intended for compliance review purposes only.
 </div>
 </body></html>`);
@@ -1418,7 +1927,7 @@ This report is confidential and intended for compliance review purposes only.
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
                       {[
                         { label: "Entity", value: app.data.co_name },
-                        { label: "Risk Tier", value: app.riskTier.toUpperCase() },
+                        { label: "Risk Tier", value: (app.riskTier || "—").toUpperCase() },
                         { label: "Status", value: app.status.replace(/_/g," ").toUpperCase() },
                         { label: "Applicant", value: app.data.appName },
                         { label: "Country", value: app.data.co_country },
@@ -1509,6 +2018,130 @@ This report is confidential and intended for compliance review purposes only.
           );
         })()}
       </div>
+
+      {/* Draft Detail Overlay */}
+      {selectedDraft && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
+          <div onClick={closeDraft} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }} />
+          <div style={{
+            position: "relative", width: "min(620px, 90vw)", height: "100vh", background: T.bg1,
+            borderLeft: `1px solid ${T.bdr}`, overflowY: "auto",
+            animation: "fadeIn .2s ease both",
+          }}>
+            {/* Header */}
+            <div style={{ position: "sticky", top: 0, zIndex: 10, background: T.bg1, borderBottom: `1px solid ${T.bdr}`, padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: T.txt }}>{selectedDraft.co_name || "Untitled Draft"}</div>
+                <div style={{ fontSize: 11, color: T.txt3, fontFamily: "'IBM Plex Mono', monospace", marginTop: 3 }}>{selectedDraft.ref_code} &middot; Draft</div>
+              </div>
+              <button onClick={closeDraft} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${T.bdrA}`, background: "transparent", color: T.txt2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+              </button>
+            </div>
+
+            {/* Meta info */}
+            <div style={{ padding: "16px 24px", borderBottom: `1px solid ${T.bdr}`, display: "flex", gap: 20, flexWrap: "wrap" }}>
+              {[
+                ["Applicant Email", selectedDraft.applicant_email || selectedDraft.app_email || "—"],
+                ["Country", selectedDraft.country || "—"],
+                ["Created", new Date(selectedDraft.created_at).toLocaleString()],
+                ["Last Saved", selectedDraft.has_saved ? new Date(selectedDraft.updated_at).toLocaleString() : "Never"],
+              ].map(([k, v]) => (
+                <div key={k} style={{ minWidth: 120 }}>
+                  <div style={{ fontSize: 10, color: T.txt3, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>{k}</div>
+                  <div style={{ fontSize: 12.5, color: T.txt }}>{v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Form data */}
+            <div style={{ padding: "20px 24px" }}>
+              {draftLoading ? (
+                <div style={{ textAlign: "center", padding: 40 }}>
+                  <div style={{ width: 28, height: 28, border: `3px solid ${T.bdr}`, borderTopColor: T.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
+                  <div style={{ fontSize: 12, color: T.txt3 }}>Loading draft data...</div>
+                </div>
+              ) : draftDetail ? (
+                <>
+                  {/* Completion summary */}
+                  {(() => {
+                    let filled = 0, total = 0;
+                    FIELD_SECTIONS.forEach(s => s.fields.forEach(f => {
+                      if (f.file || f.liveness || f.meta) return;
+                      total++;
+                      const val = draftDetail.data[f.key];
+                      if (val !== undefined && val !== null && val !== "" && !(Array.isArray(val) && val.length === 0)) filled++;
+                    }));
+                    const pct = total > 0 ? Math.round((filled / total) * 100) : 0;
+                    return (
+                      <div style={{ padding: "14px 16px", background: T.bg2, borderRadius: 10, border: `1px solid ${T.bdr}`, marginBottom: 24, display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ width: 44, height: 44, borderRadius: "50%", border: `3px solid ${pct > 60 ? T.green : pct > 20 ? T.amber : T.txt3}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: pct > 60 ? T.green : pct > 20 ? T.amber : T.txt3, fontFamily: "'IBM Plex Mono', monospace" }}>{pct}%</span>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: T.txt }}>Form Completion</div>
+                          <div style={{ fontSize: 11.5, color: T.txt3 }}>{filled} of {total} fields filled</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Sections */}
+                  {FIELD_SECTIONS.map(section => {
+                    const allFields = section.fields.filter(f => !f.file && !f.liveness && !f.meta);
+                    const filledFields = allFields.filter(f => {
+                      const val = draftDetail.data[f.key];
+                      return val !== undefined && val !== null && val !== "" && !(Array.isArray(val) && val.length === 0);
+                    });
+                    const emptyFields = allFields.filter(f => !filledFields.includes(f));
+                    if (allFields.length === 0) return null;
+                    return (
+                      <div key={section.title} style={{ marginBottom: 22 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 600, color: filledFields.length > 0 ? T.blueL : T.txt3, textTransform: "uppercase", letterSpacing: ".06em" }}>{section.title}</div>
+                          <div style={{ flex: 1, height: 1, background: T.bdr }} />
+                          <span style={{ fontSize: 10, color: filledFields.length === allFields.length ? T.green : T.txt3, fontFamily: "'IBM Plex Mono', monospace" }}>{filledFields.length}/{allFields.length}</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                          {allFields.map(f => {
+                            const val = draftDetail.data[f.key];
+                            const isFilled = val !== undefined && val !== null && val !== "" && !(Array.isArray(val) && val.length === 0);
+                            const displayVal = isFilled
+                              ? (f.bool ? (val ? "Yes" : "No") : f.list ? (Array.isArray(val) ? val.join(", ") : String(val)) : String(val))
+                              : null;
+                            return (
+                              <div key={f.key} style={{
+                                gridColumn: f.wide ? "span 2" : "span 1",
+                                padding: "8px 12px", borderRadius: 8,
+                                background: isFilled ? T.bg2 : "transparent",
+                                border: `1px solid ${isFilled ? T.bdr : T.bdr}55`,
+                              }}>
+                                <div style={{ fontSize: 10, color: T.txt3, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 3 }}>{f.label}</div>
+                                {isFilled ? (
+                                  <div style={{
+                                    fontSize: 12.5, color: T.txt, lineHeight: 1.5, wordBreak: "break-word",
+                                    fontFamily: f.mono ? "'IBM Plex Mono', monospace" : "'Inter', system-ui, sans-serif",
+                                  }}>{displayVal}</div>
+                                ) : (
+                                  <div style={{ fontSize: 11.5, color: T.txt3, fontStyle: "italic" }}>Not filled</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: 40, color: T.txt3, fontSize: 12 }}>Failed to load draft data</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      </>}
     </div>
   );
 }
