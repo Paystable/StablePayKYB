@@ -1502,13 +1502,17 @@ export default function AdminPanel() {
                               );
                             }
 
-                            /* File upload field */
+                            /* File upload field — value may be a single object or an array of uploaded docs */
                             if (f.file) {
-                              const name = typeof val === "object" ? val?.name : val;
+                              const names = (Array.isArray(val) ? val : [val])
+                                .map(d => (d && typeof d === "object" ? d.name : d))
+                                .filter(Boolean);
                               return (
                                 <div key={f.key} style={{ gridColumn: f.wide ? "span 2" : "span 1", padding: "10px 14px", background: T.bg2, borderRadius: 8, border: `1px solid ${T.bdr}` }}>
-                                  <div style={{ fontSize: 10, color: T.txt3, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>{f.label}</div>
-                                  <div style={{ fontSize: 12, color: T.blueL, fontFamily: "'IBM Plex Mono', monospace" }}>{name || "—"}</div>
+                                  <div style={{ fontSize: 10, color: T.txt3, textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>{f.label}{names.length > 1 ? ` (${names.length})` : ""}</div>
+                                  {names.length ? names.map((n, i) => (
+                                    <div key={i} style={{ fontSize: 12, color: T.blueL, fontFamily: "'IBM Plex Mono', monospace" }}>{n}</div>
+                                  )) : <div style={{ fontSize: 12, color: T.blueL, fontFamily: "'IBM Plex Mono', monospace" }}>—</div>}
                                 </div>
                               );
                             }

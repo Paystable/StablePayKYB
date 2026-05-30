@@ -1,7 +1,11 @@
 
 
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
+
+/* Provides the current draft application id to FileUpload so documents can be
+   uploaded to the backend the moment they are selected (see FileUpload). */
+const UploadCtx = createContext(null);
 
 /* ─────────────────────────────────────────────
    STABLE PAY BRAND TOKENS
@@ -219,43 +223,129 @@ function Checkbox({ label, checked, onChange, accent }) {
   );
 }
 
-function FileUpload({ value, onChange, hint }) {
+// Normalise a stored slot value into an array of uploaded-document entries.
+// Handles the new array shape, legacy single-object shapes ({file,name} or
+// {name,docId,uploaded,size}), and bare strings. Builder objects (which carry a
+// `type`/`completed` marker) are never treated as uploaded files.
+function normalizeDocList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === "object") {
+    if (value.type === "generated" || value.type === "structure_chart" || value.type === "shareholder_register" || value.completed) return [];
+    return value.name || value.docId || value.file ? [value] : [];
+  }
+  if (typeof value === "string") return [{ name: value }];
+  return [];
+}
+
+function FileUpload({ value, onChange, hint, fieldKey, multiple = true, accept = ".pdf,.jpg,.jpeg,.png,.tif,.tiff" }) {
+  const appId = useContext(UploadCtx);
   const ref = useRef();
-  const displayName = typeof value === "object" ? value?.name : value;
+  const list = normalizeDocList(value);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  // Emit using the shape the parent expects: an array when multiple files are
+  // allowed, otherwise a single object (or null) for backward compatibility.
+  const emit = next => onChange?.(multiple ? next : (next[0] || null));
+
+  const handleFiles = async fileList => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    setError("");
+    if (!appId) { setError("Still preparing your application — please wait a moment and try again."); return; }
+    setBusy(true);
+    let next = multiple ? [...list] : [];
+    for (const file of files) {
+      try {
+        const uploaded = await apiUploadDoc(appId, fieldKey || "doc", file);
+        next = [...next, { name: file.name, docId: uploaded.id, uploaded: true, size: uploaded.size_bytes }];
+        if (!multiple) break; // single-file slot keeps only the first file
+      } catch (e) {
+        setError(`Couldn't upload "${file.name}": ${e.message}`);
+      }
+    }
+    emit(next);
+    setBusy(false);
+    if (ref.current) ref.current.value = ""; // allow re-selecting the same file
+  };
+
+  const remove = idx => emit(list.filter((_, i) => i !== idx));
+
+  const showDropzone = multiple || list.length === 0;
+
   return (
-    <div
-      onClick={() => ref.current.click()}
-      style={{
-        border: `1.5px dashed ${displayName ? T.blue : T.bdrA}`, borderRadius: 8,
-        padding: "16px 20px", cursor: "pointer", textAlign: "center",
-        background: displayName ? T.blueGlowS : T.bg2, transition: "all .2s",
-        display: "flex", alignItems: "center", gap: 12,
-      }}
-    >
-      <input type="file" ref={ref} style={{ display: "none" }} onChange={e => {
-        const file = e.target.files?.[0];
-        if (file) onChange?.({ file, name: file.name });
-      }} accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" />
-      <div style={{
-        width: 32, height: 32, borderRadius: 8, background: displayName ? T.blueGlow : T.bg3,
-        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-      }}>
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M2 10V13H14V10M8 2V10M5 5L8 2L11 5" stroke={displayName ? T.blue : T.txt3} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-      <div style={{ textAlign: "left", flex: 1 }}>
-        <div style={{ fontSize: 13, color: displayName ? T.blueL : T.txt2, fontWeight: 500 }}>
-          {displayName || "Upload document"}
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <input type="file" ref={ref} multiple={multiple} style={{ display: "none" }}
+        onChange={e => handleFiles(e.target.files)} accept={accept} />
+
+      {list.map((doc, idx) => {
+        const name = typeof doc === "object" ? (doc.name || "Document") : doc;
+        const pending = typeof doc === "object" && !doc.docId; // legacy not-yet-uploaded
+        return (
+          <div key={idx} style={{
+            border: `1.5px solid ${pending ? T.amber : T.blue}`, borderRadius: 8,
+            padding: "12px 16px", background: T.blueGlowS,
+            display: "flex", alignItems: "center", gap: 12,
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 7, background: T.blueGlow,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M3 2h7l3 3v9H3z" stroke={pending ? T.amber : T.blue} strokeWidth="1.5" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div style={{ textAlign: "left", flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: T.blueL, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
+              {pending && <div style={{ fontSize: 11, color: T.amber, marginTop: 2 }}>Not uploaded — please re-select this file</div>}
+            </div>
+            <button type="button" onClick={() => remove(idx)} style={{
+              border: "none", background: "transparent", color: T.txt3, cursor: "pointer",
+              fontSize: 16, lineHeight: 1, padding: 4, flexShrink: 0,
+            }} title="Remove">×</button>
+          </div>
+        );
+      })}
+
+      {showDropzone && (
+        <div
+          onClick={() => !busy && ref.current.click()}
+          style={{
+            border: `1.5px dashed ${T.bdrA}`, borderRadius: 8,
+            padding: "16px 20px", cursor: busy ? "wait" : "pointer", textAlign: "center",
+            background: T.bg2, transition: "all .2s",
+            display: "flex", alignItems: "center", gap: 12, opacity: busy ? 0.7 : 1,
+          }}
+        >
+          <div style={{
+            width: 32, height: 32, borderRadius: 8, background: T.bg3,
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}>
+            {busy ? (
+              <div style={{ width: 14, height: 14, borderRadius: "50%", border: `2px solid ${T.txt3}`, borderTopColor: "transparent", animation: "spin .8s linear infinite" }} />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M2 10V13H14V10M8 2V10M5 5L8 2L11 5" stroke={T.txt3} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            )}
+          </div>
+          <div style={{ textAlign: "left", flex: 1 }}>
+            <div style={{ fontSize: 13, color: T.txt2, fontWeight: 500 }}>
+              {busy ? "Uploading…" : (list.length ? "Add another document" : "Upload document")}
+            </div>
+            {!busy && <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 2 }}>{hint || "PDF, JPG, PNG — max 10MB"}{multiple ? " · you can select several" : ""}</div>}
+          </div>
+          {!busy && (
+            <div style={{
+              fontSize: 11, padding: "5px 12px", borderRadius: 6, border: `1px solid ${T.bdrA}`,
+              color: T.txt2, background: T.bg3, whiteSpace: "nowrap",
+            }}>Browse</div>
+          )}
         </div>
-        {!displayName && <div style={{ fontSize: 11.5, color: T.txt3, marginTop: 2 }}>{hint || "PDF, JPG, PNG — max 10MB"}</div>}
-      </div>
-      {!displayName && (
-        <div style={{
-          fontSize: 11, padding: "5px 12px", borderRadius: 6, border: `1px solid ${T.bdrA}`,
-          color: T.txt2, background: T.bg3, whiteSpace: "nowrap",
-        }}>Browse</div>
       )}
+
+      {error && <div style={{ fontSize: 11.5, color: "#ff8888" }}>{error}</div>}
     </div>
   );
 }
@@ -1046,7 +1136,7 @@ Be concise, authoritative, and cite specific regulations when relevant. Keep res
    DOCUMENT BUILDER — Board Resolution Generator
    DocuSign-style template with signature pad
 ───────────────────────────────────────────── */
-function DocumentBuilder({ data, value, onChange }) {
+function DocumentBuilder({ data, value, onChange, fieldKey }) {
   const [mode, setMode] = useState(value?.completed ? "completed" : "builder");
   const [signatories, setSignatories] = useState(value?.signatories || [
     { name: "", designation: "", email: "" },
@@ -1307,7 +1397,7 @@ function DocumentBuilder({ data, value, onChange }) {
 
       {showUploadFallback ? (
         <div style={{ padding: 16 }}>
-          <FileUpload value={typeof value === "object" && value?.type !== "generated" ? value : null} onChange={val => { onChange?.(val); }} hint="PDF only — company letterhead, signed" />
+          <FileUpload value={typeof value === "object" && value?.type !== "generated" ? value : null} onChange={val => { onChange?.(val); }} fieldKey={fieldKey} multiple={false} hint="PDF only — company letterhead, signed" />
           <button onClick={() => setShowUploadFallback(false)} style={{
             marginTop: 8, padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6,
             background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer",
@@ -1517,7 +1607,7 @@ function DocumentBuilder({ data, value, onChange }) {
 /* ─────────────────────────────────────────────
    CORPORATE STRUCTURE CHART — Org-chart style builder
 ───────────────────────────────────────────── */
-function CorporateStructureChart({ data, value, onChange }) {
+function CorporateStructureChart({ data, value, onChange, fieldKey }) {
   const [mode, setMode] = useState(value?.completed ? "completed" : "builder");
   const [entities, setEntities] = useState(value?.entities || [
     { id: 1, name: data?.co_name || "", type: "company", pct: "100", parent: null, level: 0 },
@@ -1678,7 +1768,7 @@ function CorporateStructureChart({ data, value, onChange }) {
 
       {showUpload ? (
         <div style={{ padding: 16 }}>
-          <FileUpload value={typeof value === "object" && value?.type !== "structure_chart" ? value : null} onChange={onChange} />
+          <FileUpload value={typeof value === "object" && value?.type !== "structure_chart" ? value : null} onChange={onChange} fieldKey={fieldKey} multiple={false} />
           <button onClick={() => setShowUpload(false)} style={{ marginTop: 8, padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6, background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Use builder instead</button>
         </div>
       ) : (
@@ -1733,7 +1823,7 @@ function CorporateStructureChart({ data, value, onChange }) {
 /* ─────────────────────────────────────────────
    SHAREHOLDER REGISTER — Register of Members builder
 ───────────────────────────────────────────── */
-function ShareholderRegister({ data, value, onChange }) {
+function ShareholderRegister({ data, value, onChange, fieldKey }) {
   const [mode, setMode] = useState(value?.completed ? "completed" : "builder");
   const [shareholders, setShareholders] = useState(value?.shareholders || [
     { name: "", shares: "", pct: "", classType: "Ordinary", dateAcq: "", address: "" },
@@ -1812,7 +1902,7 @@ function ShareholderRegister({ data, value, onChange }) {
 
       {showUpload ? (
         <div style={{ padding: 16 }}>
-          <FileUpload value={typeof value === "object" && value?.type !== "shareholder_register" ? value : null} onChange={onChange} />
+          <FileUpload value={typeof value === "object" && value?.type !== "shareholder_register" ? value : null} onChange={onChange} fieldKey={fieldKey} multiple={false} />
           <button onClick={() => setShowUpload(false)} style={{ marginTop: 8, padding: "5px 12px", border: `1px solid ${T.bdrA}`, borderRadius: 6, background: "transparent", color: T.txt3, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Use builder instead</button>
         </div>
       ) : (
@@ -1948,14 +2038,14 @@ function renderStep(step, data, set, boCount, setBoCount) {
       <Divider label="Identity Verification" />
       <G>
         <Field label="Photo ID — Front (Passport / Aadhaar / Driving Licence)" required={required} half>
-          <FileUpload value={v(`bo${idx}_idFront`)} onChange={val => set(`bo${idx}_idFront`, val)} hint="Clear colour scan — JPG or PNG" />
+          <FileUpload value={v(`bo${idx}_idFront`)} onChange={val => set(`bo${idx}_idFront`, val)} fieldKey={`bo${idx}_idFront`} multiple={false} hint="Clear colour scan — JPG or PNG" />
         </Field>
         <Field label="Photo ID — Back" required={required} half>
-          <FileUpload value={v(`bo${idx}_idBack`)} onChange={val => set(`bo${idx}_idBack`, val)} hint="Back side of the same ID document" />
+          <FileUpload value={v(`bo${idx}_idBack`)} onChange={val => set(`bo${idx}_idBack`, val)} fieldKey={`bo${idx}_idBack`} multiple={false} hint="Back side of the same ID document" />
         </Field>
       </G>
       <Field label="Proof of Residential Address" required={required} hint="Utility bill, Aadhaar, bank statement — must be ≤3 months old">
-        <FileUpload value={v(`bo${idx}_proofAddr`)} onChange={val => set(`bo${idx}_proofAddr`, val)} hint="PDF, JPG, or PNG — ≤3 months old" />
+        <FileUpload value={v(`bo${idx}_proofAddr`)} onChange={val => set(`bo${idx}_proofAddr`, val)} fieldKey={`bo${idx}_proofAddr`} hint="PDF, JPG, or PNG — ≤3 months old" />
       </Field>
       <Field label="Face Liveness Verification" required={required} hint="Complete a short camera-based challenge to verify your identity in real time">
         <FaceLiveness value={v(`bo${idx}_selfie`)} onChange={val => set(`bo${idx}_selfie`, val)} />
@@ -2160,13 +2250,13 @@ function renderStep(step, data, set, boCount, setBoCount) {
           <Textarea value={v("bo_signatories")} onChange={val => set("bo_signatories", val)} placeholder="Full name — Position — Email address (one per line)" rows={3} />
         </Field>
         <Field label="Board Resolution / Authorisation Letter" hint="Use our template to create your board resolution, or upload your own">
-          <DocumentBuilder data={data} value={v("bo_authLetterFile")} onChange={val => set("bo_authLetterFile", val)} />
+          <DocumentBuilder data={data} value={v("bo_authLetterFile")} onChange={val => set("bo_authLetterFile", val)} fieldKey="bo_authLetterFile" />
         </Field>
         <Field label="Corporate Ownership / Structure Chart" required hint="Showing the full ownership chain from the entity to the ultimate natural beneficial owners. Clearly indicate percentage holdings at each level.">
-          <CorporateStructureChart data={data} value={v("bo_structureFile")} onChange={val => set("bo_structureFile", val)} />
+          <CorporateStructureChart data={data} value={v("bo_structureFile")} onChange={val => set("bo_structureFile", val)} fieldKey="bo_structureFile" />
         </Field>
         <Field label="Shareholder Register / Register of Members" required hint="Must reflect current shareholding as of date of application">
-          <ShareholderRegister data={data} value={v("bo_shareRegFile")} onChange={val => set("bo_shareRegFile", val)} />
+          <ShareholderRegister data={data} value={v("bo_shareRegFile")} onChange={val => set("bo_shareRegFile", val)} fieldKey="bo_shareRegFile" />
         </Field>
       </>
     );
@@ -2180,10 +2270,10 @@ function renderStep(step, data, set, boCount, setBoCount) {
           <Textarea value={v("sof_biz")} onChange={val => set("sof_biz", val)} placeholder="Describe the origin of the capital used to operate the business — investor funding, business revenues, retained earnings, loans, etc. Be specific." rows={4} />
         </Field>
         <Field label="Upload Supporting Document — Business Source of Funds" required hint="Accepted: audited financial statements (most recent FY), CA-certified accounts, investor term sheets / funding agreements, bank statements showing capital inflow, revenue contracts">
-          <FileUpload value={v("sof_bizFile")} onChange={val => set("sof_bizFile", val)} hint="Audited accounts / bank statements / funding agreements — PDF" />
+          <FileUpload value={v("sof_bizFile")} onChange={val => set("sof_bizFile", val)} fieldKey="sof_bizFile" hint="Audited accounts / bank statements / funding agreements — PDF" />
         </Field>
         <Field label="Upload Business Bank Statement" required hint="3–6 months of recent statements from primary operating account">
-          <FileUpload value={v("sof_bankStmt")} onChange={val => set("sof_bankStmt", val)} hint="PDF — last 3 to 6 months" />
+          <FileUpload value={v("sof_bankStmt")} onChange={val => set("sof_bankStmt", val)} fieldKey="sof_bankStmt" hint="PDF — last 3 to 6 months" />
         </Field>
 
         <Divider label="Beneficial Owner(s) — Source of Wealth" />
@@ -2200,7 +2290,7 @@ function renderStep(step, data, set, boCount, setBoCount) {
               <Textarea value={v(`sow${idx}_desc`)} onChange={val => set(`sow${idx}_desc`, val)} placeholder="Explain how this individual accumulated their personal wealth — employment income, business ownership, investments, inheritance, property, etc. Be specific." rows={3} />
             </Field>
             <Field label="Upload Evidence of Source of Wealth" required={idx===0} hint="Recent payslips, employment letter, company sale agreement, dividend statement, property sale deed, tax returns, bank statements">
-              <FileUpload value={v(`sow${idx}_file`)} onChange={val => set(`sow${idx}_file`, val)} />
+              <FileUpload value={v(`sow${idx}_file`)} onChange={val => set(`sow${idx}_file`, val)} fieldKey={`sow${idx}_file`} />
             </Field>
           </div>
         ))}
@@ -2279,7 +2369,7 @@ function renderStep(step, data, set, boCount, setBoCount) {
         </G>
         {v("aml_hasPolicy") === "Yes" && (
           <Field label="Upload AML/CFT Policy Document">
-            <FileUpload value={v("aml_policyFile")} onChange={val => set("aml_policyFile", val)} hint="Board-approved policy document — PDF" />
+            <FileUpload value={v("aml_policyFile")} onChange={val => set("aml_policyFile", val)} fieldKey="aml_policyFile" hint="Board-approved policy document — PDF" />
           </Field>
         )}
         <Divider label="Designated MLRO / Compliance Officer" />
@@ -2355,7 +2445,7 @@ function renderStep(step, data, set, boCount, setBoCount) {
           { key: "doc_sowBO2",    label: "Source of Wealth — Beneficial Owner 2",           req: false, hint: "If applicable" },
         ].map(d => (
           <Field key={d.key} label={d.label} required={d.req} hint={d.hint}>
-            <FileUpload value={v(d.key)} onChange={val => set(d.key, val)} />
+            <FileUpload value={v(d.key)} onChange={val => set(d.key, val)} fieldKey={d.key} hint={d.hint} />
           </Field>
         ))}
       </>
@@ -2484,12 +2574,19 @@ async function apiUploadDoc(appId, fieldKey, file) {
   return r.json();
 }
 
+// Safety net for the submit button: documents now upload the moment they are
+// selected (see FileUpload), so this is normally empty. It still catches any
+// live File object lingering in the form data — in single-object slots or
+// inside the new array slots — and uploads it before submission.
 function collectPendingUploads(data) {
   const pending = [];
   for (const [key, val] of Object.entries(data || {})) {
-    if (val && typeof val === "object" && val.file instanceof File && !val.docId) {
-      pending.push({ key, file: val.file, name: val.name || val.file.name });
-    }
+    const entries = Array.isArray(val) ? val : [val];
+    entries.forEach((entry, i) => {
+      if (entry && typeof entry === "object" && entry.file instanceof File && !entry.docId) {
+        pending.push({ key, idx: Array.isArray(val) ? i : null, file: entry.file, name: entry.name || entry.file.name });
+      }
+    });
   }
   return pending;
 }
@@ -2984,7 +3081,9 @@ export default function App() {
         {/* Form body */}
         <div className="sp-form-body" style={{ flex: 1, padding: "40px 40px 40px", maxWidth: 800, width: "100%", position: "relative", zIndex: 1 }}>
           <div className="sp-fade" key={step}>
-            {renderStep(step, data, set, boCount, setBoCount)}
+            <UploadCtx.Provider value={appId}>
+              {renderStep(step, data, set, boCount, setBoCount)}
+            </UploadCtx.Provider>
           </div>
         </div>
 
@@ -3066,7 +3165,14 @@ export default function App() {
                       setUploadStatus(s => ({ ...s, progress: done, label: p.name }));
                       try {
                         const uploaded = await apiUploadDoc(appId, p.key, p.file);
-                        workingData = { ...workingData, [p.key]: { name: p.name, docId: uploaded.id, uploaded: true, size: uploaded.size_bytes } };
+                        const meta = { name: p.name, docId: uploaded.id, uploaded: true, size: uploaded.size_bytes };
+                        if (p.idx === null) {
+                          workingData = { ...workingData, [p.key]: meta };
+                        } else {
+                          const arr = Array.isArray(workingData[p.key]) ? [...workingData[p.key]] : [];
+                          arr[p.idx] = meta;
+                          workingData = { ...workingData, [p.key]: arr };
+                        }
                         done++;
                       } catch (err) {
                         setUploadStatus({ active: false, progress: done, total: pending.length, label: "", error: `Failed to upload "${p.name}": ${err.message}` });
